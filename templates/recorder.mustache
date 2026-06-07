@@ -32,6 +32,7 @@
     * data-action="record-audio"
     * data-action="record-video"
     * data-action="start-recording"
+    * data-action="switch-camera"
     * data-action="cancel-preview"
     * data-action="stop"
     * data-action="rerecord"
@@ -70,6 +71,9 @@
         {{/allowvideo}}
         <button type="button" class="btn btn-success d-none" data-action="start-recording">
             {{#str}} startrecording, local_textless_forum {{/str}}
+        </button>
+        <button type="button" class="btn btn-outline-secondary d-none" data-action="switch-camera">
+            {{#str}} switchcamera, local_textless_forum {{/str}}
         </button>
         <button type="button" class="btn btn-secondary d-none" data-action="cancel-preview">
             {{#str}} cancelpreview, local_textless_forum {{/str}}

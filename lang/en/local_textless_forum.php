@@ -69,6 +69,7 @@ $string['recorderintro'] = 'Record your message. Typing is disabled in this foru
 $string['recordaudio'] = 'Record audio';
 $string['recordvideo'] = 'Record video';
 $string['startrecording'] = 'Start recording';
+$string['switchcamera'] = 'Switch camera';
 $string['cancelpreview'] = 'Cancel';
 $string['stoprecording'] = 'Stop recording';
 $string['rerecord'] = 'Record again';

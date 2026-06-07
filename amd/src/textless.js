@@ -44,6 +44,7 @@ const SELECTORS = {
     recordAudio: '[data-action="record-audio"]',
     recordVideo: '[data-action="record-video"]',
     startRecording: '[data-action="start-recording"]',
+    switchCamera: '[data-action="switch-camera"]',
     cancelPreview: '[data-action="cancel-preview"]',
     stop: '[data-action="stop"]',
     rerecord: '[data-action="rerecord"]',
@@ -100,6 +101,8 @@ class Recorder {
         this.chunks = [];
         this.mediaType = null;
         this.embed = '';
+        this.videoDevices = [];
+        this.deviceIndex = -1;
         this.autoStopTimer = null;
         this.autoStopped = false;
         this.countdownTimer = null;
@@ -115,6 +118,7 @@ class Recorder {
         this.audioBtn = recorder.querySelector(SELECTORS.recordAudio);
         this.videoBtn = recorder.querySelector(SELECTORS.recordVideo);
         this.startRecordingBtn = recorder.querySelector(SELECTORS.startRecording);
+        this.switchCameraBtn = recorder.querySelector(SELECTORS.switchCamera);
         this.cancelPreviewBtn = recorder.querySelector(SELECTORS.cancelPreview);
         this.stopBtn = recorder.querySelector(SELECTORS.stop);
         this.rerecordBtn = recorder.querySelector(SELECTORS.rerecord);
@@ -155,6 +159,9 @@ class Recorder {
         }
         if (this.startRecordingBtn) {
             this.startRecordingBtn.addEventListener('click', () => this.beginRecording());
+        }
+        if (this.switchCameraBtn) {
+            this.switchCameraBtn.addEventListener('click', () => this.switchCamera());
         }
         if (this.cancelPreviewBtn) {
             this.cancelPreviewBtn.addEventListener('click', () => this.cancelPreview());
@@ -204,6 +211,9 @@ class Recorder {
         if (this.startRecordingBtn) {
             this.startRecordingBtn.classList.toggle('d-none', state !== 'previewing');
         }
+        if (this.switchCameraBtn) {
+            this.switchCameraBtn.classList.toggle('d-none', state !== 'previewing' || this.videoDevices.length < 2);
+        }
         if (this.cancelPreviewBtn) {
             this.cancelPreviewBtn.classList.toggle('d-none', state !== 'previewing');
         }
@@ -236,6 +246,7 @@ class Recorder {
         }
 
         if (type === 'video') {
+            await this.detectCameras();
             this.preview.srcObject = this.stream;
             this.previewWrapper.classList.remove('d-none');
             this.preview.play().catch(() => {
@@ -247,6 +258,78 @@ class Recorder {
         }
 
         this.beginRecording();
+    }
+
+    /**
+     * Look for the available cameras and remember which one is currently in
+     * use, so {@see switchCamera} can offer the user the next one.
+     *
+     * Devices can only be enumerated (with usable labels and ids) once
+     * permission has been granted, so this is called after the first
+     * getUserMedia() call.
+     */
+    async detectCameras() {
+        this.videoDevices = [];
+        this.deviceIndex = -1;
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            return;
+        }
+
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            this.videoDevices = devices.filter((device) => device.kind === 'videoinput');
+        } catch (e) {
+            this.videoDevices = [];
+            return;
+        }
+
+        const track = this.stream && this.stream.getVideoTracks()[0];
+        const currentId = track && track.getSettings && track.getSettings().deviceId;
+        const matchedIndex = currentId
+            ? this.videoDevices.findIndex((device) => device.deviceId === currentId)
+            : -1;
+        this.deviceIndex = matchedIndex !== -1 ? matchedIndex : 0;
+    }
+
+    /**
+     * Switch the camera preview to the next available video input device,
+     * cycling back to the first once the last is reached. Only the video
+     * track is replaced; the microphone keeps recording from the same source.
+     */
+    async switchCamera() {
+        if (this.videoDevices.length < 2) {
+            return;
+        }
+
+        const nextIndex = (this.deviceIndex + 1) % this.videoDevices.length;
+        const deviceId = this.videoDevices[nextIndex].deviceId;
+
+        let newStream;
+        try {
+            newStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {deviceId: {exact: deviceId}},
+            });
+        } catch (e) {
+            this.setStatus('errornopermission');
+            return;
+        }
+
+        const newTrack = newStream.getVideoTracks()[0];
+        const oldTrack = this.stream.getVideoTracks()[0];
+        if (oldTrack) {
+            this.stream.removeTrack(oldTrack);
+            oldTrack.stop();
+        }
+        this.stream.addTrack(newTrack);
+
+        this.preview.srcObject = this.stream;
+        this.preview.play().catch(() => {
+            return;
+        });
+
+        this.deviceIndex = nextIndex;
     }
 
     /**
@@ -296,6 +379,8 @@ class Recorder {
         this.previewWrapper.classList.add('d-none');
         this.preview.srcObject = null;
         this.mediaType = null;
+        this.videoDevices = [];
+        this.deviceIndex = -1;
         this.setButtons('idle');
         this.setStatus('recorderintro');
     }
@@ -503,6 +588,8 @@ class Recorder {
         this.chunks = [];
         this.embed = '';
         this.mediaType = null;
+        this.videoDevices = [];
+        this.deviceIndex = -1;
         this.textarea.value = '';
         this.textarea.dispatchEvent(new Event('change', {bubbles: true}));
         this.clearPlayback();
