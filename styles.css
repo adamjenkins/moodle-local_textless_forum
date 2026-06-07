@@ -1,0 +1,18 @@
+/* Hide every part of the original editor, revealing only the recorder. */
+.local-textless-forum-locked > * {
+    display: none !important;
+}
+
+.local-textless-forum-locked > .local-textless-forum-recorder {
+    display: block !important;
+}
+
+.local-textless-forum-recorder [data-region="preview"],
+.local-textless-forum-recorder [data-region="playback"] video {
+    max-width: 480px;
+}
+
+.local-textless-forum-recorder [data-region="playback"] audio {
+    width: 100%;
+    max-width: 480px;
+}

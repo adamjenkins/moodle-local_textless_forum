@@ -1,0 +1,76 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_textless_forum/recorder
+
+    RecordRTC recorder used to replace the forum message editor in textless forums.
+
+    Classes required for JS:
+    * none
+
+    Data attributes required for JS:
+    * data-region="textless-recorder"
+    * data-region="status"
+    * data-region="limit-info"
+    * data-region="countdown"
+    * data-region="preview"
+    * data-region="playback"
+    * data-action="record-audio"
+    * data-action="record-video"
+    * data-action="stop"
+    * data-action="rerecord"
+
+    Context variables required for this template:
+    * allowaudio Boolean Whether an audio recording may be made.
+    * allowvideo Boolean Whether a video recording may be made.
+
+    Example context (json):
+    {
+        "allowaudio": true,
+        "allowvideo": true
+    }
+}}
+<div class="local-textless-forum-recorder border rounded p-3" data-region="textless-recorder">
+    <p class="text-muted" data-region="status">{{#str}} recorderintro, local_textless_forum {{/str}}</p>
+    <p class="local-textless-forum-limit text-muted small mb-2 d-none" data-region="limit-info"></p>
+    <p class="local-textless-forum-countdown fw-bold mb-2 d-none" data-region="countdown"></p>
+
+    <div class="local-textless-forum-preview mb-2 d-none" data-region="preview-wrapper">
+        <video class="w-100 rounded" data-region="preview" muted playsinline></video>
+    </div>
+
+    <div class="local-textless-forum-playback mb-2 d-none" data-region="playback"></div>
+
+    <div class="local-textless-forum-controls d-flex flex-wrap gap-2">
+        {{#allowaudio}}
+            <button type="button" class="btn btn-primary" data-action="record-audio">
+                {{#str}} recordaudio, local_textless_forum {{/str}}
+            </button>
+        {{/allowaudio}}
+        {{#allowvideo}}
+            <button type="button" class="btn btn-primary" data-action="record-video">
+                {{#str}} recordvideo, local_textless_forum {{/str}}
+            </button>
+        {{/allowvideo}}
+        <button type="button" class="btn btn-danger d-none" data-action="stop">
+            {{#str}} stoprecording, local_textless_forum {{/str}}
+        </button>
+        <button type="button" class="btn btn-secondary d-none" data-action="rerecord">
+            {{#str}} rerecord, local_textless_forum {{/str}}
+        </button>
+    </div>
+</div>
