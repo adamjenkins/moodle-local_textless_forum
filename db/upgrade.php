@@ -53,5 +53,14 @@ function xmldb_local_textless_forum_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026060701, 'local', 'textless_forum');
     }
 
+    if ($oldversion < 2026060801) {
+        // Replaced by single-format selects (transcodeaudioformat / transcodevideoformat),
+        // mirroring the simple "Default vs MP3" choice tiny_recordrtc offers.
+        unset_config('transcodeaudioformats', 'local_textless_forum');
+        unset_config('transcodevideoformats', 'local_textless_forum');
+
+        upgrade_plugin_savepoint(true, 2026060801, 'local', 'textless_forum');
+    }
+
     return true;
 }

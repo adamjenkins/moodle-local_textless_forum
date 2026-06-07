@@ -41,4 +41,43 @@ class observer {
             manager::delete_settings($forumid);
         }
     }
+
+    /**
+     * Queue background transcoding for a newly created post's recording.
+     *
+     * @param \mod_forum\event\post_created $event the post creation event
+     * @return void
+     */
+    public static function post_created(\mod_forum\event\post_created $event): void {
+        self::queue_transcode($event);
+    }
+
+    /**
+     * Queue background transcoding for a recording attached to an edited post.
+     *
+     * Edits can replace the recording (record again before saving an edit), so
+     * the post's files are inspected again on every update.
+     *
+     * @param \mod_forum\event\post_updated $event the post update event
+     * @return void
+     */
+    public static function post_updated(\mod_forum\event\post_updated $event): void {
+        self::queue_transcode($event);
+    }
+
+    /**
+     * Queue background transcoding for the recording attached to a forum post,
+     * when that post belongs to a textless forum.
+     *
+     * @param \core\event\base $event the post creation or update event
+     * @return void
+     */
+    protected static function queue_transcode(\core\event\base $event): void {
+        $forumid = (int) ($event->other['forumid'] ?? 0);
+        if (!$forumid || !manager::is_textless($forumid)) {
+            return;
+        }
+
+        transcoder::queue_for_post((int) $event->objectid, (int) $event->contextid);
+    }
 }

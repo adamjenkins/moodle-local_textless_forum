@@ -26,6 +26,31 @@ defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Textless forum';
 
+// Site-wide admin settings.
+$string['qualityheader'] = 'Recording quality';
+$string['qualityheader_desc'] = 'These settings control the quality (and therefore file size) of recordings made in textless forums, by setting the bitrates requested from the browser\'s recorder.';
+$string['audiobitrate'] = 'Audio bitrate';
+$string['audiobitrate_desc'] = 'Quality of recorded audio (larger number means higher quality and a larger file). Applies to both audio and video recordings.';
+$string['videobitrate'] = 'Video bitrate';
+$string['videobitrate_desc'] = 'Quality of recorded video (larger number means higher quality and a larger file). Applies to video recordings only.';
+$string['kbrate'] = '{$a} kb/s';
+
+$string['transcodeheader'] = 'Recording transcoding';
+$string['transcodeheader_desc'] = 'These settings control whether recordings uploaded to textless forums are converted to other, more widely compatible formats after they are saved.';
+$string['transcodeenabled'] = 'Transcode recordings';
+$string['transcodeenabled_desc'] = 'When enabled, recordings posted to textless forums are also converted to the formats selected below (in addition to being kept in their original format) once the post is saved, using ffmpeg in the background.';
+$string['transcodeaudioformat'] = 'Audio format';
+$string['transcodeaudioformat_desc'] = 'Audio recordings are also converted to this format, for wider playback compatibility. Choose "Don\'t convert" to leave audio recordings as recorded.';
+$string['transcodevideoformat'] = 'Video format';
+$string['transcodevideoformat_desc'] = 'Video recordings are also converted to this format, for wider playback compatibility. Choose "Don\'t convert" to leave video recordings as recorded.';
+$string['transcodeformatnone'] = "Don't convert";
+$string['format_mp3'] = 'MP3';
+$string['format_mp4'] = 'MP4 (H.264/AAC)';
+$string['ffmpegpath'] = 'Path to ffmpeg';
+$string['ffmpegpath_desc'] = 'The full path to the ffmpeg executable on the server, used to transcode recordings. This is a system executable path, so it is locked when $CFG->preventexecpath is enabled.';
+$string['ffmpegmissing'] = 'Recordings cannot be transcoded because the command "{$a}" could not be run on this server. Transcoding has been switched off. Install ffmpeg (or correct the path above) to enable it.';
+$string['transcodetaskname'] = 'Transcode textless forum recording';
+
 // Activity settings.
 $string['settingsheader'] = 'Textless forum (RecordRTC only)';
 $string['enable'] = 'Make this forum textless';
@@ -43,8 +68,11 @@ $string['maxduration_help'] = 'The longest a single recording may be. Recording 
 $string['recorderintro'] = 'Record your message. Typing is disabled in this forum — your message must be a recording.';
 $string['recordaudio'] = 'Record audio';
 $string['recordvideo'] = 'Record video';
+$string['startrecording'] = 'Start recording';
+$string['cancelpreview'] = 'Cancel';
 $string['stoprecording'] = 'Stop recording';
 $string['rerecord'] = 'Record again';
+$string['previewready'] = 'Camera ready. Click "Start recording" when you are ready to begin — the camera is not recording yet.';
 $string['recording'] = 'Recording… click "Stop recording" when you have finished.';
 $string['recordingstopped'] = 'Recording stopped automatically — the maximum length was reached.';
 $string['maxlength'] = 'Maximum length: {$a}';

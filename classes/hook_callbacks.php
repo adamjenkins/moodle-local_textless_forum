@@ -85,6 +85,8 @@ class hook_callbacks {
             'contextid' => $context->id,
             'mode' => manager::get_mode($forumid),
             'maxduration' => manager::get_max_duration($forumid),
+            'audiobitrate' => manager::get_audio_bitrate(),
+            'videobitrate' => manager::get_video_bitrate(),
         ]]);
     }
 }

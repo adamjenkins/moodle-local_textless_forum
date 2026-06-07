@@ -39,6 +39,12 @@ class manager {
     /** @var int Default maximum length of a single recording, in seconds. */
     const DEFAULT_MAX_DURATION = 120;
 
+    /** @var int Default audio bitrate requested from the browser's recorder, in bits per second. */
+    const DEFAULT_AUDIO_BITRATE = 128000;
+
+    /** @var int Default video bitrate requested from the browser's recorder, in bits per second. */
+    const DEFAULT_VIDEO_BITRATE = 2500000;
+
     /**
      * Return the textless configuration for a forum, or null when none is stored.
      *
@@ -104,6 +110,28 @@ class manager {
         }
 
         return (int) $settings->maxduration;
+    }
+
+    /**
+     * Return the site-wide audio bitrate to request from the browser's recorder.
+     *
+     * @return int the audio bitrate in bits per second
+     */
+    public static function get_audio_bitrate(): int {
+        $bitrate = (int) get_config('local_textless_forum', 'audiobitrate');
+
+        return $bitrate > 0 ? $bitrate : self::DEFAULT_AUDIO_BITRATE;
+    }
+
+    /**
+     * Return the site-wide video bitrate to request from the browser's recorder.
+     *
+     * @return int the video bitrate in bits per second
+     */
+    public static function get_video_bitrate(): int {
+        $bitrate = (int) get_config('local_textless_forum', 'videobitrate');
+
+        return $bitrate > 0 ? $bitrate : self::DEFAULT_VIDEO_BITRATE;
     }
 
     /**

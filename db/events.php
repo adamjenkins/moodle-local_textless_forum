@@ -29,4 +29,12 @@ $observers = [
         'eventname' => '\core\event\course_module_deleted',
         'callback' => '\local_textless_forum\observer::course_module_deleted',
     ],
+    [
+        'eventname' => '\mod_forum\event\post_created',
+        'callback' => '\local_textless_forum\observer::post_created',
+    ],
+    [
+        'eventname' => '\mod_forum\event\post_updated',
+        'callback' => '\local_textless_forum\observer::post_updated',
+    ],
 ];

@@ -43,6 +43,8 @@ const SELECTORS = {
     playback: '[data-region="playback"]',
     recordAudio: '[data-action="record-audio"]',
     recordVideo: '[data-action="record-video"]',
+    startRecording: '[data-action="start-recording"]',
+    cancelPreview: '[data-action="cancel-preview"]',
     stop: '[data-action="stop"]',
     rerecord: '[data-action="rerecord"]',
 };
@@ -112,6 +114,8 @@ class Recorder {
         this.playback = recorder.querySelector(SELECTORS.playback);
         this.audioBtn = recorder.querySelector(SELECTORS.recordAudio);
         this.videoBtn = recorder.querySelector(SELECTORS.recordVideo);
+        this.startRecordingBtn = recorder.querySelector(SELECTORS.startRecording);
+        this.cancelPreviewBtn = recorder.querySelector(SELECTORS.cancelPreview);
         this.stopBtn = recorder.querySelector(SELECTORS.stop);
         this.rerecordBtn = recorder.querySelector(SELECTORS.rerecord);
 
@@ -149,6 +153,12 @@ class Recorder {
         if (this.videoBtn) {
             this.videoBtn.addEventListener('click', () => this.start('video'));
         }
+        if (this.startRecordingBtn) {
+            this.startRecordingBtn.addEventListener('click', () => this.beginRecording());
+        }
+        if (this.cancelPreviewBtn) {
+            this.cancelPreviewBtn.addEventListener('click', () => this.cancelPreview());
+        }
         this.stopBtn.addEventListener('click', () => this.stop());
         this.rerecordBtn.addEventListener('click', () => this.reset());
 
@@ -181,7 +191,7 @@ class Recorder {
     /**
      * Toggle which buttons are visible.
      *
-     * @param {String} state One of 'idle', 'recording' or 'recorded'.
+     * @param {String} state One of 'idle', 'previewing', 'recording' or 'recorded'.
      */
     setButtons(state) {
         const showRecord = state === 'idle';
@@ -191,12 +201,23 @@ class Recorder {
         if (this.videoBtn) {
             this.videoBtn.classList.toggle('d-none', !showRecord);
         }
+        if (this.startRecordingBtn) {
+            this.startRecordingBtn.classList.toggle('d-none', state !== 'previewing');
+        }
+        if (this.cancelPreviewBtn) {
+            this.cancelPreviewBtn.classList.toggle('d-none', state !== 'previewing');
+        }
         this.stopBtn.classList.toggle('d-none', state !== 'recording');
         this.rerecordBtn.classList.toggle('d-none', state !== 'recorded');
     }
 
     /**
-     * Begin a recording of the given type.
+     * Start capturing media of the given type.
+     *
+     * For audio this begins recording immediately. For video the camera is
+     * switched on and previewed first, and the user must press "Start
+     * recording" separately — this lets them frame themselves before the
+     * recording (and its time limit) begins.
      *
      * @param {String} type Either 'audio' or 'video'.
      */
@@ -220,13 +241,34 @@ class Recorder {
             this.preview.play().catch(() => {
                 return;
             });
+            this.setButtons('previewing');
+            this.setStatus('previewready');
+            return;
+        }
+
+        this.beginRecording();
+    }
+
+    /**
+     * Start recording from the already-acquired media stream.
+     *
+     * Called immediately for audio, or once the user confirms they are ready
+     * after previewing the camera for video.
+     */
+    beginRecording() {
+        const options = {};
+        if (this.config.audiobitrate) {
+            options.audioBitsPerSecond = this.config.audiobitrate;
+        }
+        if (this.mediaType === 'video' && this.config.videobitrate) {
+            options.videoBitsPerSecond = this.config.videobitrate;
         }
 
         try {
-            this.mediaRecorder = new MediaRecorder(this.stream);
+            this.mediaRecorder = new MediaRecorder(this.stream, options);
         } catch (e) {
             this.setStatus('errorunsupported');
-            this.stopStream();
+            this.cancelPreview();
             return;
         }
 
@@ -243,6 +285,19 @@ class Recorder {
 
         this.setButtons('recording');
         this.setStatus('recording');
+    }
+
+    /**
+     * Abandon a camera preview without recording, switching the camera off
+     * and returning to the idle state.
+     */
+    cancelPreview() {
+        this.stopStream();
+        this.previewWrapper.classList.add('d-none');
+        this.preview.srcObject = null;
+        this.mediaType = null;
+        this.setButtons('idle');
+        this.setStatus('recorderintro');
     }
 
     /**
