@@ -135,6 +135,16 @@ class manager {
     }
 
     /**
+     * Whether the "Switch camera" button should be offered while previewing
+     * a video recording.
+     *
+     * @return bool true if the button should be shown
+     */
+    public static function allow_switch_camera(): bool {
+        return (bool) get_config('local_textless_forum', 'allowswitchcamera');
+    }
+
+    /**
      * Return the list of selectable recording modes for the settings form.
      *
      * @return array mode value => language string

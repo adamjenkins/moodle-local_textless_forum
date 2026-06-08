@@ -34,6 +34,8 @@ $string['audiobitrate_desc'] = 'Quality of recorded audio (larger number means h
 $string['videobitrate'] = 'Video bitrate';
 $string['videobitrate_desc'] = 'Quality of recorded video (larger number means higher quality and a larger file). Applies to video recordings only.';
 $string['kbrate'] = '{$a} kb/s';
+$string['allowswitchcamera'] = 'Allow switching cameras';
+$string['allowswitchcamera_desc'] = 'When enabled, a "Switch camera" button is shown while previewing a video recording, letting users with more than one camera switch between them.';
 
 $string['transcodeheader'] = 'Recording transcoding';
 $string['transcodeheader_desc'] = 'These settings control whether recordings uploaded to textless forums are converted to other, more widely compatible formats after they are saved.';

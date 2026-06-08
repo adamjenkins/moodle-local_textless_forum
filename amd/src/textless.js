@@ -212,7 +212,8 @@ class Recorder {
             this.startRecordingBtn.classList.toggle('d-none', state !== 'previewing');
         }
         if (this.switchCameraBtn) {
-            this.switchCameraBtn.classList.toggle('d-none', state !== 'previewing' || this.videoDevices.length < 2);
+            this.switchCameraBtn.classList.toggle('d-none',
+                !this.config.allowswitchcamera || state !== 'previewing' || this.videoDevices.length < 2);
         }
         if (this.cancelPreviewBtn) {
             this.cancelPreviewBtn.classList.toggle('d-none', state !== 'previewing');
@@ -246,7 +247,9 @@ class Recorder {
         }
 
         if (type === 'video') {
-            await this.detectCameras();
+            if (this.config.allowswitchcamera) {
+                await this.detectCameras();
+            }
             this.preview.srcObject = this.stream;
             this.previewWrapper.classList.remove('d-none');
             this.preview.play().catch(() => {

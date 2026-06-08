@@ -63,6 +63,13 @@ if ($hassiteconfig) {
         8
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'local_textless_forum/allowswitchcamera',
+        get_string('allowswitchcamera', 'local_textless_forum'),
+        get_string('allowswitchcamera_desc', 'local_textless_forum'),
+        0
+    ));
+
     // Recording transcoding.
     $settings->add(new admin_setting_heading(
         'local_textless_forum/transcodeheader',
@@ -77,7 +84,7 @@ if ($hassiteconfig) {
         'local_textless_forum/ffmpegpath',
         get_string('ffmpegpath', 'local_textless_forum'),
         get_string('ffmpegpath_desc', 'local_textless_forum'),
-        '/usr/bin/ffmpeg'
+        ''
     ));
 
     if (!transcoder::is_ffmpeg_available()) {

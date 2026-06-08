@@ -87,6 +87,7 @@ class hook_callbacks {
             'maxduration' => manager::get_max_duration($forumid),
             'audiobitrate' => manager::get_audio_bitrate(),
             'videobitrate' => manager::get_video_bitrate(),
+            'allowswitchcamera' => manager::allow_switch_camera(),
         ]]);
     }
 }
