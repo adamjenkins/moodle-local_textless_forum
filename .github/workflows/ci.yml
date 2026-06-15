@@ -1,0 +1,109 @@
+name: Moodle Plugin CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'MOODLE_*_STABLE'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_USER: 'root'
+          MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+          MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
+          MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3']
+        moodle-branch: ['MOODLE_500_STABLE', 'MOODLE_501_STABLE', 'MOODLE_502_STABLE']
+        database: [pgsql, mariadb]
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          ini-values: max_input_vars=5000
+          coverage: none
+
+      - name: Initialise moodle-plugin-ci
+        uses: moodlehq/moodle-plugin-ci@v4
+        with:
+          php: ${{ matrix.php }}
+          moodle-branch: ${{ matrix.moodle-branch }}
+          database: ${{ matrix.database }}
+          node-version: '20.x'
+        env:
+          DB: ${{ matrix.database }}
+          MOODLE_BRANCH: ${{ matrix.moodle-branch }}
+
+      - name: PHP Lint
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phplint
+
+      - name: Moodle Code Checker
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci codechecker --max-warnings 15
+
+      - name: PHP Mess Detector
+        continue-on-error: true
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpmd
+
+      - name: Validate
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci validate
+
+      - name: Check upgrade savepoints
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci savepoints
+
+      - name: Mustache Lint
+        continue-on-error: true
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci mustache
+
+      - name: Grunt
+        continue-on-error: true
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci grunt --max-lint-warnings 15
+
+      - name: PHPUnit tests
+        if: ${{ !cancelled() }}
+        run: moodle-plugin-ci phpunit
