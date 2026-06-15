@@ -726,9 +726,6 @@ const interceptReplies = () => {
  * @param {Object} config The configuration: {contextid, mode}.
  */
 export const init = (config) => {
-    // Temporary diagnostic — confirms the module loaded and received its config.
-    window.console.log('local_textless_forum: enforcing RecordRTC-only editor', config);
-
     interceptReplies();
 
     const processAll = () => {
