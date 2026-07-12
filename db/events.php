@@ -30,6 +30,10 @@ $observers = [
         'callback' => '\local_textless_forum\observer::course_module_deleted',
     ],
     [
+        'eventname' => '\core\event\course_deleted',
+        'callback' => '\local_textless_forum\observer::course_deleted',
+    ],
+    [
         'eventname' => '\mod_forum\event\post_created',
         'callback' => '\local_textless_forum\observer::post_created',
     ],

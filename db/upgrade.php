@@ -62,5 +62,11 @@ function xmldb_local_textless_forum_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026060801, 'local', 'textless_forum');
     }
 
+    if ($oldversion < 2026060805) {
+        // A course_deleted observer (orphan sweep) and course backup/restore
+        // support for the per-forum settings were added; no data to migrate.
+        upgrade_plugin_savepoint(true, 2026060805, 'local', 'textless_forum');
+    }
+
     return true;
 }

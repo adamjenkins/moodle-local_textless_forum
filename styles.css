@@ -1,9 +1,12 @@
-/* Hide every part of the original editor, revealing only the recorder. */
+/* Hide every part of the original editor, revealing only the recorder.
+   !important is required to defeat the editor's own inline/display styles. */
 .local-textless-forum-locked > * {
+    /* stylelint-disable-next-line declaration-no-important */
     display: none !important;
 }
 
 .local-textless-forum-locked > .local-textless-forum-recorder {
+    /* stylelint-disable-next-line declaration-no-important */
     display: block !important;
 }
 

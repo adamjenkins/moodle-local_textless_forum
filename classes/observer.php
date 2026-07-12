@@ -43,6 +43,23 @@ class observer {
     }
 
     /**
+     * Remove configuration rows orphaned by a course deletion.
+     *
+     * Course deletion removes the course's forums without firing
+     * course_module_deleted for them (remove_course_contents deletes modules
+     * directly), so any configuration row whose forum no longer exists is
+     * swept here instead.
+     *
+     * @param \core\event\course_deleted $event the course deletion event
+     * @return void
+     */
+    public static function course_deleted(\core\event\course_deleted $event): void {
+        global $DB;
+
+        $DB->delete_records_select('local_textless_forum', 'forum NOT IN (SELECT id FROM {forum})');
+    }
+
+    /**
      * Queue background transcoding for a newly created post's recording.
      *
      * @param \mod_forum\event\post_created $event the post creation event
