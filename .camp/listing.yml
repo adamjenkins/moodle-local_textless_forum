@@ -1,0 +1,21 @@
+# camp listing manifest — descriptive content for your plugin's page.
+# Edit freely and commit; camp ingests this file at each tagged release.
+# Schema: https://camp-registry.org/schema/listing.schema.json
+name: local_textless_forum
+summary: 'Makes selected forums accept only RecordRTC-recorded audio or video as the body of a post — the only way to add content is to record it.'
+description: |
+  Augments **mod_forum** so that the message of a post in a *textless* forum
+  must be a browser-made recording: the message editor is replaced with a
+  RecordRTC recorder and all text input is removed (the subject can still be
+  typed). Per-forum settings choose audio only, video only, or either.
+labels:
+  # Required disclosure labels — pick all that apply (RFC §4.7):
+  #   fully-free | freemium | paid-service | external-account
+  #   donation-supported | commercial-support-available
+  - fully-free
+# screenshots:
+#   - path: .camp/screenshots/overview.png
+#     caption: Main view
+# links:
+#   docs: https://…
+#   issues: https://…
