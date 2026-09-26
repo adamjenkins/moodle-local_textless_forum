@@ -1,19 +1,21 @@
 # Changes
 
-## v1.1.0
+## v1.1.1
 
-- Per-forum settings now survive course backup/restore and are cleaned up
-  when their course is deleted.
-- CI tests Moodle 5.0, 5.1 and 5.2 with compatible PHP versions
-  (5.0: 8.2-8.3, 5.1: 8.2-8.4, 5.2: 8.3-8.4).
-
-## v1.0.0
-
-First public release.
-
-- Turns chosen forums "textless": students reply with in-browser audio or
-  video recordings instead of typed text.
-- Per-forum recording mode (audio, video or both) and maximum duration;
-  optional background transcoding of recordings.
-- Recordings are ordinary forum attachments, so grading, backup and privacy
-  flows all work as for any forum post.
+- Fixed: admin pages no longer run ffmpeg. The plugin's settings used to run
+  "ffmpeg -version" every time the admin tree was built (every admin page and
+  admin search), which hung servers that cannot start processes, such as
+  PHP-WASM sandboxes. ffmpeg is now checked in the background (by cron) when
+  the transcoding settings are saved and before a recording is first
+  transcoded, and the settings page shows the stored result.
+- "Transcode recordings" stays visible with a notice when ffmpeg is missing
+  or not yet checked; enabling it again re-runs the check. A failed check
+  still switches transcoding off.
+- If ffmpeg cannot be started at all (the process cannot be spawned, or
+  `exec` is disabled), transcoding is treated as unavailable instead of
+  failing the request.
+- Releases are now published to Moodle Marketplace (replacing the retired
+  moodle.org Plugins directory workflow).
+- CI now tests Moodle 5.2 only (PHP 8.3 and 8.4, PostgreSQL and MariaDB).
+  The declared supported range is unchanged (Moodle 5.0-5.2), but 5.0 and 5.1
+  are no longer tested.
