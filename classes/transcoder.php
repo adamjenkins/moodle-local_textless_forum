@@ -42,11 +42,52 @@ class transcoder {
     }
 
     /**
+     * Run a shell command and collect its output and exit code.
+     *
+     * This is the plugin's only process spawn, so that tests can replace it.
+     * Callers must go through {@see try_command()}, which also survives a
+     * runtime that throws instead of spawning.
+     *
+     * @param string $command the complete, already escaped command line
+     * @return array [string[] $output, int $exitcode]
+     */
+    protected static function run_command(string $command): array {
+        $output = [];
+        $exitcode = 1;
+        @exec($command . ' 2>&1', $output, $exitcode);
+
+        return [$output, $exitcode];
+    }
+
+    /**
+     * Run a shell command, treating any failure to spawn it as a failed command.
+     *
+     * The `@` in {@see run_command()} only silences PHP diagnostics; a SAPI
+     * that cannot spawn processes may throw instead, even though exec() exists.
+     * An exec() removed by disable_functions throws \Error ("Call to undefined
+     * function") since PHP 8, so this catch covers that host too.
+     *
+     * @param string $command the complete, already escaped command line
+     * @return array [string[] $output, int $exitcode], with exit code -1 when the command could not be run
+     */
+    protected static function try_command(string $command): array {
+        try {
+            return static::run_command($command);
+        } catch (\Throwable $e) {
+            return [[], -1];
+        }
+    }
+
+    /**
      * Whether the configured ffmpeg command can actually be run on this server.
      *
-     * The result is cached for the lifetime of the request, since this involves
-     * spawning a process and is checked from both the settings page and the
-     * transcoding task.
+     * This spawns a process, so it must only be called where one is expected
+     * (the background tasks) — never while rendering a page, because some
+     * runtimes (PHP-WASM) never return from a spawn attempt. Pages read the
+     * stored result via {@see get_ffmpeg_status()} instead.
+     *
+     * The result is cached for the lifetime of the request, and stored by
+     * {@see check_ffmpeg()}.
      *
      * @return bool true when "<ffmpeg> -version" runs successfully
      */
@@ -55,26 +96,71 @@ class transcoder {
             return self::$ffmpegavailable;
         }
 
-        if (!function_exists('exec')) {
-            return self::$ffmpegavailable = false;
+        return static::check_ffmpeg();
+    }
+
+    /**
+     * Probe the configured ffmpeg command now and store the result.
+     *
+     * When ffmpeg cannot be run, transcoding is switched off, so the settings
+     * page does not offer a control that cannot work.
+     *
+     * @return bool true when "<ffmpeg> -version" runs successfully
+     */
+    public static function check_ffmpeg(): bool {
+        $path = self::ffmpeg_path();
+        [, $exitcode] = static::try_command(escapeshellarg($path) . ' -version');
+        $available = ($exitcode === 0);
+
+        set_config('ffmpegcheckedpath', $path, 'local_textless_forum');
+        set_config('ffmpegavailable', $available ? 1 : 0, 'local_textless_forum');
+        if (!$available) {
+            set_config('transcodeenabled', 0, 'local_textless_forum');
         }
 
-        $command = escapeshellarg(self::ffmpeg_path()) . ' -version';
-        $output = [];
-        $exitcode = 1;
-        @exec($command . ' 2>&1', $output, $exitcode);
+        return self::$ffmpegavailable = $available;
+    }
 
-        return self::$ffmpegavailable = ($exitcode === 0);
+    /**
+     * The stored result of the last ffmpeg check, without spawning anything.
+     *
+     * @return bool|null true/false from the last check of the currently
+     *     configured path, or null when that path has not been checked yet
+     */
+    public static function get_ffmpeg_status(): ?bool {
+        // Unset (false) never matches a path, so it also reads as "not checked".
+        if (get_config('local_textless_forum', 'ffmpegcheckedpath') !== self::ffmpeg_path()) {
+            return null;
+        }
+
+        return !empty(get_config('local_textless_forum', 'ffmpegavailable'));
+    }
+
+    /**
+     * Queue a background re-check of ffmpeg, e.g. after its settings change.
+     *
+     * Used as an admin setting "updated" callback, so it must not spawn.
+     *
+     * @return void
+     */
+    public static function queue_ffmpeg_check(): void {
+        \core\task\manager::queue_adhoc_task(new \local_textless_forum\task\check_ffmpeg(), true);
     }
 
     /**
      * Whether transcoding should actually happen: the administrator has turned
-     * it on, and the prerequisites (ffmpeg) are satisfied.
+     * it on, and ffmpeg is not known to be missing.
+     *
+     * This reads the stored check result and never spawns, since it runs when
+     * a post is saved. A path that has not been checked yet counts as usable:
+     * the transcoding task checks it before running it, and switches
+     * transcoding off if it is missing.
      *
      * @return bool true when recordings should be transcoded
      */
     public static function is_enabled(): bool {
-        return !empty(get_config('local_textless_forum', 'transcodeenabled')) && self::is_ffmpeg_available();
+        return !empty(get_config('local_textless_forum', 'transcodeenabled'))
+            && self::get_ffmpeg_status() !== false;
     }
 
     /**
@@ -248,9 +334,7 @@ class transcoder {
             escapeshellarg($targetpath),
         ]);
 
-        $output = [];
-        $exitcode = 1;
-        @exec($command . ' 2>&1', $output, $exitcode);
+        [, $exitcode] = static::try_command($command);
 
         if ($exitcode !== 0 || !is_file($targetpath) || filesize($targetpath) === 0) {
             return null;

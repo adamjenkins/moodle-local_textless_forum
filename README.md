@@ -101,9 +101,14 @@ format, while the original is kept too:
   This is treated as a system executable path: when `$CFG->preventexecpath` is
   set in `config.php`, the field is locked read-only, matching core settings
   such as `pathtogs`.
-- **Transcode recordings** — the master switch. It is only offered (and is
-  otherwise forced off with an explanatory notice) when `ffmpeg` can actually
-  be run at the configured path.
+- **Transcode recordings** — the master switch. Whether `ffmpeg` can actually
+  be run at the configured path is checked in the background (by cron), when
+  these settings are saved and before a recording is first transcoded — never
+  while an admin page is being displayed. If the check fails, transcoding is
+  switched off and the page says why; enabling it again re-runs the check.
+  On a server that cannot start processes at all (for example PHP-WASM
+  sandboxes), the plugin works normally and transcoding is simply
+  unavailable.
 - **Audio format** / **Video format** — choose *Don't convert*, or convert
   audio to **MP3** and/or video to **MP4 (H.264/AAC)**, mirroring the simple
   "convert or don't" choice offered by `tiny_recordrtc`'s "Audio format"
