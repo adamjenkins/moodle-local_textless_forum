@@ -3,7 +3,7 @@
     "description": "Augments mod_forum so that selected forums accept only RecordRTC-recorded audio or video as the body of a post",
     "type": "moodle-local",
     "require": {
-        "moodle/moodle": ">=5.0 <5.3",
+        "moodle/moodle": ">=5.0 <5.4",
         "moodle/composer-installer": "^1.0"
     },
     "license": "GPL-3.0-or-later"

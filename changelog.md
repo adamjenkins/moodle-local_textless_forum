@@ -2,6 +2,13 @@
 
 All notable changes to Textless forum (`local_textless_forum`) are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Declare Moodle 5.3 support (`$plugin->supported` upper bound raised from
+  502 to 503).
+
 ## [1.1.1] - 2026-09-26
 
 ### Fixed

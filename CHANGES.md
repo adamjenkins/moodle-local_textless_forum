@@ -1,5 +1,9 @@
 # Changes
 
+## Unreleased
+
+- Declare Moodle 5.3 support.
+
 ## v1.1.1
 
 - Fixed: admin pages no longer run ffmpeg. The plugin's settings used to run
