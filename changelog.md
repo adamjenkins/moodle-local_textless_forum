@@ -2,7 +2,7 @@
 
 All notable changes to Textless forum (`local_textless_forum`) are documented in this file.
 
-## [Unreleased]
+## [1.1.2] - 2026-10-03
 
 ### Changed
 
