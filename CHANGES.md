@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## v1.1.3
 
 - Textless forums are now enforced on the server: when a post is created or
   edited (including the first post of a discussion, and posts sent through web
@@ -22,10 +22,14 @@
   default).
 - Recordings at the start of a new discussion are now transcoded too.
 - Requires Moodle 5.0 or later, matching the supported versions.
+- The Composer package now accepts later Moodle 5.x releases
+  (`moodle/moodle` `^5.0`) instead of stopping before 5.4. The supported
+  versions declared in `version.php` are unchanged.
 - New PHPUnit tests for the upload checks, the observers, backup and restore
   and the transcoder; the Behat CI step, which had no features to run, was
-  removed.
+  removed. The automated tests now run against the released Moodle 5.3
+  (`MOODLE_503_STABLE`) instead of Moodle's development branch, and those
+  runs now count towards a pass.
+- Each tagged release is also published to the camp plugin registry.
 
-## v1.1.2
-
-- Declare Moodle 5.3 support.
+No database or capability changes. No action is required after upgrading.

@@ -2,7 +2,13 @@
 
 All notable changes to Textless forum (`local_textless_forum`) are documented in this file.
 
-## [Unreleased]
+## [1.1.3] - 2026-10-04
+
+### Added
+
+- `.github/workflows/camp-release.yml`: pushing a `v*` tag publishes the
+  release to the camp registry through
+  `camp-registry/camp-workflows`' `release.yml@v1`.
 
 ### Security
 
@@ -45,6 +51,10 @@ All notable changes to Textless forum (`local_textless_forum`) are documented in
 - PHPUnit tests added for the upload checks, the observers, backup/restore,
   the transcoder's command line and `add_source_to_message()`. The Behat CI
   step was removed: there are no features, so it could only pass vacuously.
+- composer.json's `moodle/moodle` constraint is now `^5.0` (was
+  `>=5.0 <5.4`), so new 5.x releases are not excluded.
+- CI tests `MOODLE_503_STABLE` (PHP 8.3-8.4, PostgreSQL 17, MariaDB 11.4)
+  as blocking rows, replacing the non-blocking moodle.git `main` rows.
 
 ## [1.1.2] - 2026-10-03
 
