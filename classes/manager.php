@@ -209,6 +209,97 @@ class manager {
     }
 
     /**
+     * Reduce a post message to the recordings it embeds, as the recorder writes them.
+     *
+     * Only <audio>/<video> elements whose <source> elements point at the post's
+     * own files (@@PLUGINFILE@@) are kept, and only the element types the mode
+     * allows. Each is rebuilt in the recorder's exact shape, so any other text,
+     * markup or attribute is dropped. A message with no allowed recording
+     * becomes an empty string.
+     *
+     * @param string $message the post message as stored
+     * @param string $mode one of the MODE_* constants
+     * @return string the recordings-only message
+     */
+    public static function restrict_message(string $message, string $mode): string {
+        $allowed = [];
+        if ($mode !== self::MODE_VIDEO) {
+            $allowed[] = 'audio';
+        }
+        if ($mode !== self::MODE_AUDIO) {
+            $allowed[] = 'video';
+        }
+
+        preg_match_all('~<(audio|video)\b[^>]*>(.*?)</\1\s*>~is', $message, $elements, PREG_SET_ORDER);
+
+        $result = '';
+        foreach ($elements as $element) {
+            $tag = strtolower($element[1]);
+            if (!in_array($tag, $allowed, true)) {
+                continue;
+            }
+
+            preg_match_all('~<source\b[^>]*>~i', $element[2], $sourcetags);
+            $sources = '';
+            foreach ($sourcetags[0] as $sourcetag) {
+                if (!preg_match('~\bsrc\s*=\s*"(@@PLUGINFILE@@/[^"<>]+)"~i', $sourcetag, $src)) {
+                    continue;
+                }
+                $type = '';
+                if (preg_match('~\btype\s*=\s*"([a-z0-9.+/-]+)"~i', $sourcetag, $typematch)) {
+                    $type = ' type="' . $typematch[1] . '"';
+                }
+                $sources .= '<source src="' . $src[1] . '"' . $type . '>';
+            }
+
+            if ($sources !== '') {
+                $result .= '<' . $tag . ' controls="true">' . $sources . '</' . $tag . '>';
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Make a saved post in a textless forum contain recordings only.
+     *
+     * The recorder in the browser only makes it hard to type a message; a
+     * post can also be sent without it (a hand-made request, web services,
+     * the mobile app). This strips anything else from the stored message.
+     * The database is written only when the message actually changes, and
+     * directly, so that no further post_updated event is triggered.
+     *
+     * @param int $postid the mod_forum post id
+     * @param int $forumid the mod_forum instance id the post belongs to
+     * @return bool true when the message was changed
+     */
+    public static function enforce_recording_only(int $postid, int $forumid): bool {
+        global $DB;
+
+        if (!self::is_textless($forumid)) {
+            return false;
+        }
+
+        $post = $DB->get_record('forum_posts', ['id' => $postid], 'id, message, messageformat', IGNORE_MISSING);
+        if (!$post) {
+            return false;
+        }
+
+        $message = self::restrict_message((string) $post->message, self::get_mode($forumid));
+        if ($message === $post->message && (int) $post->messageformat === FORMAT_HTML) {
+            return false;
+        }
+
+        $DB->update_record('forum_posts', (object) [
+            'id' => $postid,
+            'message' => $message,
+            'messageformat' => FORMAT_HTML,
+        ]);
+
+        return true;
+    }
+
+    /**
      * Remove the stored configuration for a forum.
      *
      * @param int $forumid the mod_forum instance id

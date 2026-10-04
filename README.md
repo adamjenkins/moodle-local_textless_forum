@@ -29,7 +29,7 @@ must be a recording.
 
 ## Requirements
 
-- Moodle 4.5 (2024100700) or later — the plugin uses the Hooks API.
+- Moodle 5.0 (2025041400) or later; 5.0 to 5.3 are supported.
 - A browser that supports the RecordRTC `MediaRecorder` API (current Chrome,
   Firefox, Edge and Safari).
 - The site must be served over **HTTPS** (or `localhost`); browsers only grant
@@ -79,6 +79,16 @@ Clicking **Reply** on someone else's post takes the user to the same recorder
 rather than the plain-text quick reply, so the restriction is enforced
 everywhere a post can be created.
 
+The server enforces the same rules, so they also hold for posts made without
+the recorder (a hand-made request, web services or the mobile app): when a
+post in a textless forum is saved, everything in its message except the
+recordings the forum's mode allows is removed. The upload endpoint accepts
+only a real audio or video recording (WebM, MP4 or Ogg, checked from the
+file's content) of an allowed type, within the site, course and forum upload
+size limits. The maximum recording length is enforced in the browser; the
+server bounds it through the file size, allowing twice the recorder's bitrate
+for the maximum length.
+
 ## Site-wide settings
 
 Visit **Site administration → Plugins → Local plugins → Textless forum** to
@@ -125,11 +135,12 @@ Once a transcoded copy is ready, it is added to the post as an additional
 | Stored configuration | The `local_textless_forum` table (one row per forum), accessed through `\local_textless_forum\manager`. |
 | Front-end enforcement | `\local_textless_forum\hook_callbacks` listens on `before_footer_html_generation` and loads the `local_textless_forum/textless` AMD module on textless-forum pages. |
 | Recorder | `amd/src/textless.js` + `templates/recorder.mustache`: removes the editor, captures audio/video, and writes a `<video>`/`<audio>` embed into the message. |
-| Upload endpoint | `upload.php` stores the recording in the editor's draft area (capability- and mode-checked) and returns a draftfile URL. |
+| Server-side enforcement | `\local_textless_forum\observer` strips anything but allowed recordings from a textless forum's posts when they are created or edited (`\local_textless_forum\manager::enforce_recording_only`). |
+| Upload endpoint | `upload.php` hands the upload to `\local_textless_forum\recording::store`, which checks the forum, the capability, the mode, the file's content type, size and length budget, stores it in the editor's draft area and returns it for a draftfile URL. |
 | Reply rerouting | The AMD module intercepts the in-page reply buttons and sends users to the advanced (RecordRTC) editor. |
 | Site-wide settings | `settings.php` adds a settings page under **Local plugins** for recording bitrates and transcoding, backed by `\local_textless_forum\manager` and `\local_textless_forum\transcoder`. |
-| Transcoding | `\local_textless_forum\observer` queues a `\local_textless_forum\task\transcode_recording` adhoc task (via `\local_textless_forum\transcoder::queue_for_post`) whenever a post is created or edited in a textless forum; the task runs `ffmpeg` and adds the converted file to the post as an extra `<source>`. |
-| Cleanup | `\local_textless_forum\observer` removes a forum's configuration when the activity is deleted. |
+| Transcoding | `\local_textless_forum\observer` queues a `\local_textless_forum\task\transcode_recording` adhoc task (via `\local_textless_forum\transcoder::queue_for_post`) whenever a post is created or edited in a textless forum; the task runs `ffmpeg` (with the input format pinned to the recording's container and local files only) and adds the converted file to the post as an extra `<source>`. |
+| Cleanup | `\local_textless_forum\observer` removes a forum's configuration when the activity is deleted, and sweeps orphaned rows when a course is deleted. |
 
 ## Privacy
 

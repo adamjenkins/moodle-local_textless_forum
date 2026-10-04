@@ -201,10 +201,104 @@ final class transcoder_test extends \advanced_testcase {
             'itemid' => 0,
             'filepath' => '/',
             'filename' => 'audio-test.webm',
-        ], 'not really a recording');
+        ], file_get_contents(__DIR__ . '/fixtures/video.webm'));
 
         $this->assertNull(testable_transcoder::transcode($source, 'mp3'));
         $this->assertCount(2, testable_transcoder::$commands);
         $this->assertStringContainsString('libmp3lame', testable_transcoder::$commands[1]);
+    }
+
+    /**
+     * Store a file in a test area.
+     *
+     * @param string $filename the file name
+     * @param string $content the file content
+     * @return \stored_file the stored file
+     */
+    protected function store_source(string $filename, string $content): \stored_file {
+        return get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_textless_forum',
+            'filearea' => 'test',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => $filename,
+        ], $content);
+    }
+
+    /**
+     * ffmpeg is told the input format and may read local files only, so it
+     * cannot pick a playlist or concat format from the content.
+     *
+     * @return void
+     */
+    public function test_transcode_pins_input_format_and_protocols(): void {
+        testable_transcoder::check_ffmpeg();
+
+        $webm = $this->store_source('video-1.webm', file_get_contents(__DIR__ . '/fixtures/video.webm'));
+        testable_transcoder::transcode($webm, 'mp4');
+        $mp4 = $this->store_source('video-2.mp4', file_get_contents(__DIR__ . '/fixtures/video.mp4'));
+        testable_transcoder::transcode($mp4, 'mp3');
+
+        $this->assertCount(3, testable_transcoder::$commands);
+        $this->assertMatchesRegularExpression(
+            "~ -y -protocol_whitelist file -f matroska -i '[^']+/source_video-1\\.webm' ~",
+            testable_transcoder::$commands[1]
+        );
+        $this->assertMatchesRegularExpression(
+            "~ -y -protocol_whitelist file -f mov -i '[^']+/source_video-2\\.mp4' ~",
+            testable_transcoder::$commands[2]
+        );
+    }
+
+    /**
+     * A file named like a recording that is not one never reaches ffmpeg.
+     *
+     * @return void
+     */
+    public function test_transcode_refuses_non_recording(): void {
+        testable_transcoder::check_ffmpeg();
+
+        $playlist = $this->store_source('audio-x.webm', "#EXTM3U\n#EXT-X-VERSION:3\nfile:///etc/passwd\n");
+        $concat = $this->store_source('audio-y.webm', "ffconcat version 1.0\nfile '/etc/passwd'\n");
+
+        $this->assertNull(testable_transcoder::transcode($playlist, 'mp3'));
+        $this->assertNull(testable_transcoder::transcode($concat, 'mp3'));
+        $this->assertCount(1, testable_transcoder::$commands, 'Only the ffmpeg check may have run');
+    }
+
+    /**
+     * The transcoded copy is added to the post once, however often the task runs,
+     * and a post whose recording has changed is left alone.
+     *
+     * @return void
+     */
+    public function test_add_source_to_message_is_idempotent(): void {
+        global $DB;
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_and_enrol($course, 'student');
+        $forum = $generator->create_module('forum', ['course' => $course->id]);
+        $embed = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1.webm"></audio>';
+        $discussion = $generator->get_plugin_generator('mod_forum')->create_discussion([
+            'course' => $course->id,
+            'forum' => $forum->id,
+            'userid' => $user->id,
+            'message' => $embed,
+        ]);
+        $original = $this->store_source('audio-1.webm', 'original');
+        $transcoded = $this->store_source('audio-1.mp3', 'transcoded');
+
+        transcoder::add_source_to_message($discussion->firstpost, $original, $transcoded);
+        transcoder::add_source_to_message($discussion->firstpost, $original, $transcoded);
+
+        $expected = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1.webm">'
+            . '<source src="@@PLUGINFILE@@/audio-1.mp3" type="audio/mp3"></audio>';
+        $this->assertSame($expected, $DB->get_field('forum_posts', 'message', ['id' => $discussion->firstpost]));
+
+        // A post re-recorded since the task was queued is not touched.
+        $DB->set_field('forum_posts', 'message', 'replaced', ['id' => $discussion->firstpost]);
+        transcoder::add_source_to_message($discussion->firstpost, $original, $transcoded);
+        $this->assertSame('replaced', $DB->get_field('forum_posts', 'message', ['id' => $discussion->firstpost]));
     }
 }

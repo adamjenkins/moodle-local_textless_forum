@@ -26,7 +26,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_textless_forum';
 $plugin->version = 2026100300;
-$plugin->requires = 2024100700;
+$plugin->requires = 2025041400;
 $plugin->supported = [500, 503];
 $plugin->maturity = MATURITY_BETA;
 $plugin->release = '1.1.2';

@@ -22,6 +22,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use local_textless_forum\manager;
+
 /**
  * Restores the per-forum textless configuration backed up with each forum.
  *
@@ -64,24 +66,19 @@ class restore_local_textless_forum_plugin extends restore_local_plugin {
      * @return void
      */
     public function after_restore_module() {
-        global $DB;
-
         if ($this->pendingsettings === null || $this->task->get_modulename() !== 'forum') {
             return;
         }
 
+        // A backup file is untrusted input: go through the same checks as the
+        // activity settings form (mode allowlist, negative length clamp) and
+        // the same upsert on the forum.
         $data = $this->pendingsettings;
-        $data->forum = (int) $this->task->get_activityid();
-        $data->timecreated = time();
-        $data->timemodified = time();
-        unset($data->id);
-
-        if ($existing = $DB->get_record('local_textless_forum', ['forum' => $data->forum])) {
-            $data->id = $existing->id;
-            $data->timecreated = $existing->timecreated;
-            $DB->update_record('local_textless_forum', $data);
-        } else {
-            $DB->insert_record('local_textless_forum', $data);
-        }
+        manager::save_settings(
+            (int) $this->task->get_activityid(),
+            !empty($data->enabled),
+            clean_param($data->recordingmode ?? '', PARAM_ALPHA),
+            isset($data->maxduration) ? (int) $data->maxduration : manager::DEFAULT_MAX_DURATION
+        );
     }
 }

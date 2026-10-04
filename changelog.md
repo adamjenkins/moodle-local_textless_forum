@@ -2,6 +2,43 @@
 
 All notable changes to Textless forum (`local_textless_forum`) are documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- The recording-only rule is enforced on the server, not only by the
+  recorder in the browser: the `post_created`, `post_updated` and (new)
+  `discussion_created` observers strip everything but the recordings the
+  forum's mode allows from a textless forum's post
+  (`manager::enforce_recording_only()`).
+- `upload.php` now hands the upload to `recording::store()`, which checks the
+  content: the file must be a WebM/Matroska, MP4 or Ogg container, and must
+  contain a video track exactly when it is declared as video, so the forum's
+  audio-only/video-only mode can no longer be bypassed with a client-sent
+  `mediatype`. The file name is chosen by the server. The site, course and
+  forum upload limits apply (`get_user_max_upload_file_size()`), and the
+  forum's maximum length bounds the size (twice the recorder bitrate for that
+  length, plus 256 KB).
+- The transcoding task pins ffmpeg's input format (`-f matroska|mov|ogg`) and
+  protocols (`-protocol_whitelist file`), and skips files that are not
+  recordings, so playlist or concat inputs cannot reach ffmpeg's demuxers.
+
+### Fixed
+
+- Restore writes the textless settings through `manager::save_settings()`,
+  so a crafted backup cannot store an unknown mode or a negative maximum
+  length.
+- Recordings in the first post of a new discussion are transcoded too
+  (mod_forum triggers `discussion_created`, not `post_created`, for it).
+
+### Changed
+
+- `$plugin->requires` raised to 2025041400 (Moodle 5.0), the lowest
+  supported branch.
+- PHPUnit tests added for the upload checks, the observers, backup/restore,
+  the transcoder's command line and `add_source_to_message()`. The Behat CI
+  step was removed: there are no features, so it could only pass vacuously.
+
 ## [1.1.2] - 2026-10-03
 
 ### Changed

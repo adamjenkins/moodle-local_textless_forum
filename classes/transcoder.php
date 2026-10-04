@@ -299,6 +299,25 @@ class transcoder {
     }
 
     /**
+     * The ffmpeg input format (demuxer) for a recording container.
+     *
+     * @param string|null $container one of the recording::CONTAINER_* constants, or null
+     * @return string|null the ffmpeg demuxer name, or null when the container is not a recording's
+     */
+    protected static function ffmpeg_demuxer(?string $container): ?string {
+        switch ($container) {
+            case recording::CONTAINER_MATROSKA:
+                return 'matroska';
+            case recording::CONTAINER_MP4:
+                return 'mov';
+            case recording::CONTAINER_OGG:
+                return 'ogg';
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Convert a stored recording to the given format with ffmpeg, storing the
      * result alongside the original in the same file area.
      *
@@ -326,9 +345,20 @@ class transcoder {
 
         $source->copy_content_to($sourcepath);
 
+        // Any poster can put a file with a recording's name into a post, so the
+        // input is untrusted: it must be one of the recorder's containers, and
+        // ffmpeg is told which, and to read local files only, instead of
+        // guessing the format (playlist and concat formats open other inputs).
+        $demuxer = self::ffmpeg_demuxer(recording::detect_container($sourcepath));
+        if ($demuxer === null) {
+            return null;
+        }
+
         $command = implode(' ', [
             escapeshellarg(self::ffmpeg_path()),
             '-y',
+            '-protocol_whitelist', 'file',
+            '-f', $demuxer,
             '-i', escapeshellarg($sourcepath),
             $arguments,
             escapeshellarg($targetpath),

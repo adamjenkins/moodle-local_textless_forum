@@ -60,17 +60,17 @@ class observer {
     }
 
     /**
-     * Queue background transcoding for a newly created post's recording.
+     * Keep a new reply to recordings only, and queue its transcoding.
      *
      * @param \mod_forum\event\post_created $event the post creation event
      * @return void
      */
     public static function post_created(\mod_forum\event\post_created $event): void {
-        self::queue_transcode($event);
+        self::handle_post((int) $event->objectid, $event);
     }
 
     /**
-     * Queue background transcoding for a recording attached to an edited post.
+     * Keep an edited post to recordings only, and queue its transcoding.
      *
      * Edits can replace the recording (record again before saving an edit), so
      * the post's files are inspected again on every update.
@@ -79,22 +79,42 @@ class observer {
      * @return void
      */
     public static function post_updated(\mod_forum\event\post_updated $event): void {
-        self::queue_transcode($event);
+        self::handle_post((int) $event->objectid, $event);
     }
 
     /**
-     * Queue background transcoding for the recording attached to a forum post,
-     * when that post belongs to a textless forum.
+     * Keep the first post of a new discussion to recordings only, and queue
+     * its transcoding.
      *
-     * @param \core\event\base $event the post creation or update event
+     * mod_forum triggers discussion_created, not post_created, for the post
+     * that starts a discussion (mod/forum/post.php, and the add_discussion
+     * web service).
+     *
+     * @param \mod_forum\event\discussion_created $event the discussion creation event
      * @return void
      */
-    protected static function queue_transcode(\core\event\base $event): void {
+    public static function discussion_created(\mod_forum\event\discussion_created $event): void {
+        global $DB;
+
+        $postid = (int) $DB->get_field('forum_discussions', 'firstpost', ['id' => $event->objectid]);
+        self::handle_post($postid, $event);
+    }
+
+    /**
+     * For a post in a textless forum, strip anything but recordings from its
+     * message, then queue background transcoding for its recordings.
+     *
+     * @param int $postid the mod_forum post id
+     * @param \core\event\base $event the post or discussion event
+     * @return void
+     */
+    protected static function handle_post(int $postid, \core\event\base $event): void {
         $forumid = (int) ($event->other['forumid'] ?? 0);
-        if (!$forumid || !manager::is_textless($forumid)) {
+        if (!$postid || !$forumid || !manager::is_textless($forumid)) {
             return;
         }
 
-        transcoder::queue_for_post((int) $event->objectid, (int) $event->contextid);
+        manager::enforce_recording_only($postid, $forumid);
+        transcoder::queue_for_post($postid, (int) $event->contextid);
     }
 }

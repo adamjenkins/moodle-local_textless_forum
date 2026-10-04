@@ -38,6 +38,10 @@ $observers = [
         'callback' => '\local_textless_forum\observer::post_created',
     ],
     [
+        'eventname' => '\mod_forum\event\discussion_created',
+        'callback' => '\local_textless_forum\observer::discussion_created',
+    ],
+    [
         'eventname' => '\mod_forum\event\post_updated',
         'callback' => '\local_textless_forum\observer::post_updated',
     ],
