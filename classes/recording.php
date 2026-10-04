@@ -62,8 +62,16 @@ class recording {
      * @return string|null one of the CONTAINER_* constants, or null when the file is not a supported container
      */
     public static function detect_container(string $path): ?string {
-        $head = (string) @file_get_contents($path, false, null, 0, 12);
+        return self::detect_container_in((string) @file_get_contents($path, false, null, 0, 12));
+    }
 
+    /**
+     * Identify the media container from the first bytes of a file.
+     *
+     * @param string $head the first bytes of the file (12 are enough)
+     * @return string|null one of the CONTAINER_* constants, or null when the bytes are not a supported container
+     */
+    protected static function detect_container_in(string $head): ?string {
         if (strlen($head) >= 4 && substr($head, 0, 4) === "\x1A\x45\xDF\xA3") {
             return self::CONTAINER_MATROSKA;
         }
@@ -90,7 +98,26 @@ class recording {
      */
     public static function has_video_track(string $path, string $container): bool {
         $head = (string) @file_get_contents($path, false, null, 0, self::SNIFF_BYTES);
+        $tail = '';
+        if ($container === self::CONTAINER_MP4) {
+            $size = (int) @filesize($path);
+            if ($size > self::SNIFF_BYTES) {
+                $tail = (string) @file_get_contents($path, false, null, $size - self::SNIFF_BYTES);
+            }
+        }
 
+        return self::has_video_track_in($head, $tail, $container);
+    }
+
+    /**
+     * Whether the sniffed parts of a media file show a video track.
+     *
+     * @param string $head the first {@see SNIFF_BYTES} bytes of the file
+     * @param string $tail the last {@see SNIFF_BYTES} bytes of an MP4 file larger than that, '' otherwise
+     * @param string $container one of the CONTAINER_* constants
+     * @return bool true when a video track was found
+     */
+    protected static function has_video_track_in(string $head, string $tail, string $container): bool {
         switch ($container) {
             case self::CONTAINER_MATROSKA:
                 // Tracks always precede the first Cluster in recorder output.
@@ -100,11 +127,6 @@ class recording {
 
             case self::CONTAINER_MP4:
                 // The 'moov' box can sit before or after the media data.
-                $size = (int) @filesize($path);
-                $tail = '';
-                if ($size > self::SNIFF_BYTES) {
-                    $tail = (string) @file_get_contents($path, false, null, $size - self::SNIFF_BYTES);
-                }
                 $mdat = strpos($head, 'mdat');
                 $headers = $mdat === false ? $head : substr($head, 0, $mdat);
                 return (bool) preg_match('~hdlr.{8}vide~s', $headers . $tail);
@@ -114,6 +136,56 @@ class recording {
         }
 
         return false;
+    }
+
+    /**
+     * Whether a file saved in a post is a recording the forum accepts.
+     *
+     * The upload endpoint checks what the recorder sends, but a file can also
+     * reach a post through core's own draft upload, so the post's files are
+     * checked again when it is saved: the content must be a WebM, MP4 or Ogg
+     * container, with a video track exactly when it is embedded as video, and
+     * within the size the forum's maximum length allows
+     * ({@see max_bytes_for_duration()}).
+     *
+     * @param \stored_file $file the file the post embeds
+     * @param string $mediatype manager::MODE_AUDIO or manager::MODE_VIDEO: how the post embeds it
+     * @param int $maxduration the forum's maximum length in seconds, 0 for no limit
+     * @return bool true when the file is an acceptable recording
+     */
+    public static function is_acceptable_stored_file(\stored_file $file, string $mediatype, int $maxduration): bool {
+        if ($file->is_directory() || $file->is_external_file()) {
+            return false;
+        }
+
+        $size = (int) $file->get_filesize();
+        $durationbytes = self::max_bytes_for_duration($maxduration, $mediatype);
+        if ($durationbytes && $size > $durationbytes) {
+            return false;
+        }
+
+        try {
+            $handle = $file->get_content_file_handle();
+        } catch (\Exception $e) {
+            // The content is missing from the file pool: nothing to accept.
+            return false;
+        }
+        if (!$handle) {
+            return false;
+        }
+        $head = (string) stream_get_contents($handle, self::SNIFF_BYTES);
+        $container = self::detect_container_in($head);
+        $tail = '';
+        if ($container === self::CONTAINER_MP4 && $size > self::SNIFF_BYTES) {
+            $tail = (string) stream_get_contents($handle, self::SNIFF_BYTES, $size - self::SNIFF_BYTES);
+        }
+        fclose($handle);
+
+        if ($container === null) {
+            return false;
+        }
+
+        return self::has_video_track_in($head, $tail, $container) === ($mediatype === manager::MODE_VIDEO);
     }
 
     /**

@@ -24,6 +24,7 @@ namespace local_textless_forum;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \local_textless_forum\observer
  * @covers     \local_textless_forum\manager
+ * @covers     \local_textless_forum\recording
  */
 final class observer_test extends \advanced_testcase {
     /** @var string An audio recording as the recorder embeds it, after mod_forum saved it. */
@@ -33,27 +34,87 @@ final class observer_test extends \advanced_testcase {
     const VIDEO = '<video controls="true"><source src="@@PLUGINFILE@@/video-1759000000-abcdef.webm"></video>';
 
     /**
+     * The bytes of an audio-only WebM recording: EBML header, an Opus track, then a Cluster.
+     *
+     * @param int $size the total size in bytes
+     * @return string the file content
+     */
+    protected function audio_webm(int $size = 2000): string {
+        $header = "\x1A\x45\xDF\xA3\x42\x82\x84webm" . str_repeat("\x00", 16) . "\x86\x86A_OPUS\x83\x81\x02";
+
+        return str_pad($header . "\x1F\x43\xB6\x75", $size, "\x55");
+    }
+
+    /**
+     * The bytes of a short VP8 WebM video recording.
+     *
+     * @return string the file content
+     */
+    protected function video_webm(): string {
+        return file_get_contents(__DIR__ . '/fixtures/video.webm');
+    }
+
+    /**
+     * Store a file in a post's file area, as mod_forum does when the post is saved.
+     *
+     * @param \context_module $context the forum context
+     * @param int $postid the post id
+     * @param string $filename the file name
+     * @param string $content the file content
+     * @param int|null $userid the uploading user, or null for a file the server created
+     * @return \stored_file the stored file
+     */
+    protected function add_post_file(
+        \context_module $context,
+        int $postid,
+        string $filename,
+        string $content,
+        ?int $userid
+    ): \stored_file {
+        return get_file_storage()->create_file_from_string([
+            'contextid' => $context->id,
+            'component' => 'mod_forum',
+            'filearea' => 'post',
+            'itemid' => $postid,
+            'filepath' => '/',
+            'filename' => $filename,
+            'userid' => $userid,
+        ], $content);
+    }
+
+    /**
      * Create a forum with textless settings and a discussion whose first post has the given message.
+     *
+     * The first post's file area holds the recordings {@see AUDIO} and {@see VIDEO} point at.
      *
      * @param bool $enabled whether the forum is textless
      * @param string $mode the recording mode
      * @param string $message the first post's message
+     * @param int $maxduration the forum's maximum recording length in seconds
      * @return array [\stdClass $forum, \stdClass $discussion, \context_module $context]
      */
-    protected function make_discussion(bool $enabled, string $mode, string $message): array {
+    protected function make_discussion(
+        bool $enabled,
+        string $mode,
+        string $message,
+        int $maxduration = manager::DEFAULT_MAX_DURATION
+    ): array {
         $generator = $this->getDataGenerator();
         $course = $generator->create_course();
         $user = $generator->create_and_enrol($course, 'student');
         $forum = $generator->create_module('forum', ['course' => $course->id]);
-        manager::save_settings($forum->id, $enabled, $mode);
+        manager::save_settings($forum->id, $enabled, $mode, $maxduration);
         $discussion = $generator->get_plugin_generator('mod_forum')->create_discussion([
             'course' => $course->id,
             'forum' => $forum->id,
             'userid' => $user->id,
             'message' => $message,
         ]);
+        $context = \context_module::instance($forum->cmid);
+        $this->add_post_file($context, $discussion->firstpost, 'audio-1759000000-abcdef.webm', $this->audio_webm(), $user->id);
+        $this->add_post_file($context, $discussion->firstpost, 'video-1759000000-abcdef.webm', $this->video_webm(), $user->id);
 
-        return [$forum, $discussion, \context_module::instance($forum->cmid)];
+        return [$forum, $discussion, $context];
     }
 
     /**
@@ -175,12 +236,133 @@ final class observer_test extends \advanced_testcase {
         $message = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1.webm">'
             . '<source src="@@PLUGINFILE@@/audio-1.mp3" type="audio/mpeg"></audio>' . self::VIDEO;
         [$forum, $discussion, $context] = $this->make_discussion(true, manager::MODE_BOTH, $message);
+        $this->add_post_file($context, $discussion->firstpost, 'audio-1.webm', $this->audio_webm(), (int) $discussion->userid);
+        // The transcoding task's copy: created by the server, so it has no owning user.
+        $this->add_post_file($context, $discussion->firstpost, 'audio-1.mp3', 'ID3' . str_repeat("\x55", 100), null);
         $post = $DB->get_record('forum_posts', ['id' => $discussion->firstpost]);
 
         $this->trigger_post_event(\mod_forum\event\post_updated::class, $forum, $post, $context);
 
         $this->assertSame($message, $this->post($post->id)->message);
         $this->assertSame($message, manager::restrict_message($message, manager::MODE_BOTH));
+    }
+
+    /**
+     * A file placed through core's draft upload instead of the recorder is checked
+     * when the post is saved: only real recordings of the embedded type stay.
+     *
+     * @return void
+     */
+    public function test_draft_uploaded_non_recordings_are_dropped(): void {
+        global $CFG, $DB;
+        $this->resetAfterTest();
+        [$forum, $discussion, $context] = $this->make_discussion(true, manager::MODE_BOTH, self::AUDIO);
+        $student = $DB->get_record('user', ['id' => $discussion->userid]);
+        $reply = $this->getDataGenerator()->get_plugin_generator('mod_forum')->create_post([
+            'discussion' => $discussion->id,
+            'parent' => $discussion->firstpost,
+            'userid' => $student->id,
+            'message' => '',
+        ]);
+
+        // The student uploads files straight into a draft area, as core's
+        // repository upload allows, then saves the post with them embedded.
+        $this->setUser($student);
+        $usercontext = \context_user::instance($student->id);
+        $draftitemid = file_get_unused_draft_itemid();
+        $draft = [
+            'audio-1759000001-aaaaaa.webm' => $this->audio_webm(),
+            'audio-1759000002-bbbbbb.webm' => '%PDF-1.4 not a recording' . str_repeat('x', 100),
+            'notes.pdf' => '%PDF-1.4 not a recording' . str_repeat('x', 100),
+            'audio-1759000003-cccccc.webm' => $this->video_webm(),
+        ];
+        foreach ($draft as $filename => $content) {
+            get_file_storage()->create_file_from_string([
+                'contextid' => $usercontext->id,
+                'component' => 'user',
+                'filearea' => 'draft',
+                'itemid' => $draftitemid,
+                'filepath' => '/',
+                'filename' => $filename,
+                'userid' => $student->id,
+            ], $content);
+        }
+        $draftbase = $CFG->wwwroot . '/draftfile.php/' . $usercontext->id . '/user/draft/' . $draftitemid . '/';
+        $text = '';
+        foreach (array_keys($draft) as $filename) {
+            $text .= '<audio controls="true"><source src="' . $draftbase . $filename . '"></audio>';
+        }
+        $text = file_save_draft_area_files($draftitemid, $context->id, 'mod_forum', 'post', $reply->id, [
+            'subdirs' => 0,
+            'maxbytes' => 0,
+            'maxfiles' => -1,
+        ], $text);
+        $DB->set_field('forum_posts', 'message', $text, ['id' => $reply->id]);
+        $this->assertStringContainsString('@@PLUGINFILE@@/notes.pdf', $text);
+
+        $this->trigger_post_event(\mod_forum\event\post_created::class, $forum, $reply, $context);
+
+        // Only the real audio recording stays: not a non-media file under a
+        // recording's name, not any other file, and not a video embedded as audio.
+        $this->assertSame(
+            '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1759000001-aaaaaa.webm"></audio>',
+            $this->post($reply->id)->message
+        );
+    }
+
+    /**
+     * A recording larger than the forum's maximum length allows is dropped at save.
+     *
+     * @return void
+     */
+    public function test_over_length_recording_is_dropped(): void {
+        $this->resetAfterTest();
+        $long = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-2.webm"></audio>';
+        // One second allows recording::max_bytes_for_duration(1, audio) bytes; this file is larger.
+        [$forum, $discussion, $context] = $this->make_discussion(true, manager::MODE_BOTH, self::AUDIO . $long, 1);
+        $content = $this->audio_webm(recording::max_bytes_for_duration(1, manager::MODE_AUDIO) + 1);
+        $this->add_post_file($context, $discussion->firstpost, 'audio-2.webm', $content, (int) $discussion->userid);
+
+        $this->trigger_discussion_created($forum, $discussion, $context);
+
+        $this->assertSame(self::AUDIO, $this->post($discussion->firstpost)->message);
+    }
+
+    /**
+     * A poster cannot supply a transcoded fallback: a file named like one but
+     * uploaded by a user is dropped, while the recording itself stays.
+     *
+     * @return void
+     */
+    public function test_user_supplied_fallback_is_dropped(): void {
+        $this->resetAfterTest();
+        $message = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1.webm">'
+            . '<source src="@@PLUGINFILE@@/audio-1.mp3" type="audio/mpeg"></audio>';
+        [$forum, $discussion, $context] = $this->make_discussion(true, manager::MODE_BOTH, $message);
+        $this->add_post_file($context, $discussion->firstpost, 'audio-1.webm', $this->audio_webm(), (int) $discussion->userid);
+        $this->add_post_file($context, $discussion->firstpost, 'audio-1.mp3', 'ID3 a two-hour mp3', (int) $discussion->userid);
+
+        $this->trigger_discussion_created($forum, $discussion, $context);
+
+        $this->assertSame(
+            '<audio controls="true"><source src="@@PLUGINFILE@@/audio-1.webm"></audio>',
+            $this->post($discussion->firstpost)->message
+        );
+    }
+
+    /**
+     * A source naming a file that is not in the post's own file area is dropped.
+     *
+     * @return void
+     */
+    public function test_missing_file_is_dropped(): void {
+        $this->resetAfterTest();
+        $missing = '<audio controls="true"><source src="@@PLUGINFILE@@/audio-9.webm"></audio>';
+        [$forum, $discussion, $context] = $this->make_discussion(true, manager::MODE_BOTH, $missing . self::VIDEO);
+
+        $this->trigger_discussion_created($forum, $discussion, $context);
+
+        $this->assertSame(self::VIDEO, $this->post($discussion->firstpost)->message);
     }
 
     /**

@@ -11,6 +11,10 @@
   forum, and the site, course and forum upload size limits apply. The
   forum's maximum recording length is also bounded on the server, through
   the file size.
+- The same content and length checks are applied again when a post is
+  saved, so a file put into the post without the recorder (through Moodle's
+  own file upload) is removed from the message unless it is a real recording
+  of the embedded type within the maximum length.
 - Transcoding tells ffmpeg the recording's input format and lets it read
   local files only; files that are not recordings are not transcoded.
 - Restoring a forum applies the same checks to its textless settings as the

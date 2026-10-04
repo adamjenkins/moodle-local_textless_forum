@@ -87,7 +87,13 @@ only a real audio or video recording (WebM, MP4 or Ogg, checked from the
 file's content) of an allowed type, within the site, course and forum upload
 size limits. The maximum recording length is enforced in the browser; the
 server bounds it through the file size, allowing twice the recorder's bitrate
-for the maximum length.
+for the maximum length. Because a file can also be put into a post without
+the recorder (through Moodle's own file upload), the content and length
+checks are applied again when the post is saved: a recording whose file is
+not a real recording of the embedded type, or is too large for the maximum
+length, is removed from the message. If the forum's maximum length is
+lowered later, editing an older post re-checks its recordings against the
+new limit.
 
 ## Site-wide settings
 

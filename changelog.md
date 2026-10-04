@@ -19,6 +19,13 @@ All notable changes to Textless forum (`local_textless_forum`) are documented in
   forum upload limits apply (`get_user_max_upload_file_size()`), and the
   forum's maximum length bounds the size (twice the recorder bitrate for that
   length, plus 256 KB).
+- The post-save enforcement re-checks every file a textless post embeds
+  (`recording::is_acceptable_stored_file()`), because core's draft upload
+  accepts any file: a `<source>` is kept only when its file in the post's own
+  area is a WebM/MP4/Ogg container with a video track exactly when embedded as
+  `<video>`, within the maximum-length size budget. The transcoded fallback is
+  kept only when it is the server-created copy (no owning user) of a source
+  that passed.
 - The transcoding task pins ffmpeg's input format (`-f matroska|mov|ogg`) and
   protocols (`-protocol_whitelist file`), and skips files that are not
   recordings, so playlist or concat inputs cannot reach ffmpeg's demuxers.

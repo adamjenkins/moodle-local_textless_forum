@@ -217,11 +217,18 @@ class manager {
      * markup or attribute is dropped. A message with no allowed recording
      * becomes an empty string.
      *
+     * When $acceptsource is given, it decides for each such <source> whether
+     * the file it points at may stay; it is called as
+     * $acceptsource(string $tag, string $src, string[] $kept), where $tag is
+     * 'audio' or 'video', $src the "@@PLUGINFILE@@/..." URL and $kept the
+     * sources of the same element already accepted.
+     *
      * @param string $message the post message as stored
      * @param string $mode one of the MODE_* constants
+     * @param callable|null $acceptsource optional check of each referenced file
      * @return string the recordings-only message
      */
-    public static function restrict_message(string $message, string $mode): string {
+    public static function restrict_message(string $message, string $mode, ?callable $acceptsource = null): string {
         $allowed = [];
         if ($mode !== self::MODE_VIDEO) {
             $allowed[] = 'audio';
@@ -241,10 +248,15 @@ class manager {
 
             preg_match_all('~<source\b[^>]*>~i', $element[2], $sourcetags);
             $sources = '';
+            $kept = [];
             foreach ($sourcetags[0] as $sourcetag) {
                 if (!preg_match('~\bsrc\s*=\s*"(@@PLUGINFILE@@/[^"<>]+)"~i', $sourcetag, $src)) {
                     continue;
                 }
+                if ($acceptsource !== null && !$acceptsource($tag, $src[1], $kept)) {
+                    continue;
+                }
+                $kept[] = $src[1];
                 $type = '';
                 if (preg_match('~\btype\s*=\s*"([a-z0-9.+/-]+)"~i', $sourcetag, $typematch)) {
                     $type = ' type="' . $typematch[1] . '"';
@@ -266,6 +278,13 @@ class manager {
      * The recorder in the browser only makes it hard to type a message; a
      * post can also be sent without it (a hand-made request, web services,
      * the mobile app). This strips anything else from the stored message.
+     *
+     * Files can also reach the post without the upload endpoint (core's own
+     * draft upload accepts any file), so each embedded file is checked again
+     * here ({@see recording_source_checker()}): a source whose file is not a
+     * real recording of the embedded type, or is larger than the forum's
+     * maximum length allows, is dropped too.
+     *
      * The database is written only when the message actually changes, and
      * directly, so that no further post_updated event is triggered.
      *
@@ -285,7 +304,11 @@ class manager {
             return false;
         }
 
-        $message = self::restrict_message((string) $post->message, self::get_mode($forumid));
+        $message = self::restrict_message(
+            (string) $post->message,
+            self::get_mode($forumid),
+            self::recording_source_checker($postid, $forumid)
+        );
         if ($message === $post->message && (int) $post->messageformat === FORMAT_HTML) {
             return false;
         }
@@ -297,6 +320,79 @@ class manager {
         ]);
 
         return true;
+    }
+
+    /**
+     * Build the check {@see restrict_message()} applies to each file a post embeds.
+     *
+     * A source is accepted when it names a file in the post's own file area
+     * (mod_forum/post) and either:
+     * - the file is a recording of the embedded type within the forum's
+     *   maximum length ({@see recording::is_acceptable_stored_file()}), or
+     * - it is the transcoded copy of a source already accepted in the same
+     *   element: named as {@see transcoder::transcoded_filename()} names it,
+     *   and created by the server (no owning user). Files placed through a
+     *   draft area always carry the uploading user, so such a copy cannot be
+     *   supplied by a poster.
+     *
+     * @param int $postid the mod_forum post id
+     * @param int $forumid the mod_forum instance id
+     * @return callable the source check
+     */
+    protected static function recording_source_checker(int $postid, int $forumid): callable {
+        $files = [];
+        $cm = get_coursemodule_from_instance('forum', $forumid, 0, false, IGNORE_MISSING);
+        if ($cm) {
+            $context = \context_module::instance($cm->id);
+            $fs = get_file_storage();
+            foreach ($fs->get_area_files($context->id, 'mod_forum', 'post', $postid, 'filepath, filename', false) as $file) {
+                $files[ltrim($file->get_filepath(), '/') . $file->get_filename()] = $file;
+            }
+        }
+        $maxduration = self::get_max_duration($forumid);
+        $prefix = '@@PLUGINFILE@@/';
+
+        $filefor = function (string $src) use ($files, $prefix): ?\stored_file {
+            $path = rawurldecode(substr($src, strlen($prefix)));
+
+            return $files[$path] ?? null;
+        };
+
+        $checked = [];
+
+        return function (string $tag, string $src, array $kept) use ($filefor, $maxduration, &$checked): bool {
+            $file = $filefor($src);
+            if (!$file) {
+                return false;
+            }
+
+            $key = $tag . ':' . $file->get_id();
+            if (!isset($checked[$key])) {
+                $checked[$key] = recording::is_acceptable_stored_file($file, $tag, $maxduration);
+            }
+            if ($checked[$key]) {
+                return true;
+            }
+
+            // A fallback the transcoding task made from an accepted recording.
+            if (!empty($file->get_userid())) {
+                return false;
+            }
+            $extension = pathinfo($file->get_filename(), PATHINFO_EXTENSION);
+            foreach ($kept as $keptsrc) {
+                $original = $filefor($keptsrc);
+                if (
+                    $original
+                        && $original->get_id() !== $file->get_id()
+                        && $original->get_filepath() === $file->get_filepath()
+                        && transcoder::transcoded_filename($original->get_filename(), $extension) === $file->get_filename()
+                ) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
     }
 
     /**
