@@ -5,12 +5,10 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-22.04
-    # moodle.git main rows (matrix.experimental) are non-blocking.
-    continue-on-error: ${{ matrix.experimental == true }}
 
     services:
       postgres:
-        # Moodle 5.2 requires PostgreSQL 16+, per admin/environment.xml; main/5.3
+        # Moodle 5.2 requires PostgreSQL 16+, per admin/environment.xml; MOODLE_503_STABLE
         # needs PostgreSQL 17 (environment.xml 5.3 block), set via the matrix.
         image: ${{ matrix.pgsql-image || 'postgres:16' }}
         env:
@@ -21,7 +19,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
 
       mariadb:
-        # Moodle 5.2 requires MariaDB 10.11+, per admin/environment.xml; main/5.3
+        # Moodle 5.2 requires MariaDB 10.11+, per admin/environment.xml; MOODLE_503_STABLE
         # needs MariaDB 11.4 (environment.xml 5.3 block), set via the matrix.
         image: ${{ matrix.mariadb-image || 'mariadb:10.11' }}
         env:
@@ -40,10 +38,11 @@ jobs:
         php: ['8.3', '8.4']
         moodle-branch: ['MOODLE_502_STABLE']
         database: [pgsql, mariadb]
-        # moodle.git main (= 5.3beta, PHP 8.3-8.4) as non-blocking extra jobs.
+        # MOODLE_503_STABLE (PHP 8.3-8.4, PostgreSQL 17+, MariaDB 11.4+ per its
+        # environment.xml 5.3 block) as blocking extra jobs.
         include:
-          - { php: '8.4', moodle-branch: 'main', database: pgsql, experimental: true, pgsql-image: 'postgres:17', mariadb-image: 'mariadb:11.4' }
-          - { php: '8.3', moodle-branch: 'main', database: mariadb, experimental: true, pgsql-image: 'postgres:17', mariadb-image: 'mariadb:11.4' }
+          - { php: '8.4', moodle-branch: 'MOODLE_503_STABLE', database: pgsql, pgsql-image: 'postgres:17', mariadb-image: 'mariadb:11.4' }
+          - { php: '8.3', moodle-branch: 'MOODLE_503_STABLE', database: mariadb, pgsql-image: 'postgres:17', mariadb-image: 'mariadb:11.4' }
 
     steps:
       - name: Check out repository code
