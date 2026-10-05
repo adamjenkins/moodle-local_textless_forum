@@ -13,9 +13,9 @@ labels:
   #   fully-free | freemium | paid-service | external-account
   #   donation-supported | commercial-support-available
   - fully-free
-# screenshots:
-#   - path: .camp/screenshots/overview.png
-#     caption: Main view
+screenshots:
+  - path: .camp/screenshots/01-textless-post-form.png
+    caption: 'The Add discussion topic form in a textless forum: the text editor is replaced by Record audio and Record video buttons'
 # links:
 #   docs: https://…
 #   issues: https://…
