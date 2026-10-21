@@ -25,6 +25,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+import Config from 'core/config';
 import {renderForPromise, appendNodeContents} from 'core/templates';
 import {getString} from 'core/str';
 
@@ -548,13 +549,13 @@ class Recorder {
         const filename = `${type}-${Date.now()}.${extensionForMime(mime)}`;
 
         const formData = new FormData();
-        formData.append('sesskey', M.cfg.sesskey);
+        formData.append('sesskey', Config.sesskey);
         formData.append('itemid', itemid);
         formData.append('contextid', this.config.contextid);
         formData.append('mediatype', type);
         formData.append('recording', blob, filename);
 
-        const response = await fetch(`${M.cfg.wwwroot}/local/textless_forum/upload.php`, {
+        const response = await fetch(`${Config.wwwroot}/local/textless_forum/upload.php`, {
             method: 'POST',
             body: formData,
         });
