@@ -89,7 +89,7 @@ class recording {
      * Whether a media file contains a video track.
      *
      * Only the container's track headers are read, so the media payload cannot
-     * produce a false match: for Matroska the headers before the first Cluster,
+     * produce a false match: for Matroska the Tracks element (found by walking the EBML structure),
      * for MP4 the handler ('hdlr') boxes, for Ogg the stream header packets.
      *
      * @param string $path the file to inspect
@@ -120,10 +120,7 @@ class recording {
     protected static function has_video_track_in(string $head, string $tail, string $container): bool {
         switch ($container) {
             case self::CONTAINER_MATROSKA:
-                // Tracks always precede the first Cluster in recorder output.
-                $cluster = strpos($head, "\x1F\x43\xB6\x75");
-                $headers = $cluster === false ? $head : substr($head, 0, $cluster);
-                return (bool) preg_match('~V_(?:VP8|VP9|AV1|MPEG4/|MPEGH/|THEORA)~', $headers);
+                return self::matroska_has_video_track($head);
 
             case self::CONTAINER_MP4:
                 // The 'moov' box can sit before or after the media data.
@@ -136,6 +133,166 @@ class recording {
         }
 
         return false;
+    }
+
+    /**
+     * Whether the head of a Matroska/WebM file declares a video track.
+     *
+     * The EBML structure is walked, not searched: the element IDs are plain
+     * byte sequences that also occur inside other elements (current Chromium
+     * writes a SeekHead whose entries hold the Cluster ID before the Tracks
+     * element), and inside the media payload. The walk skips the EBML header,
+     * enters the Segment, skips its children up to Tracks, and reads each
+     * TrackEntry's TrackType (1 = video) and CodecID ("V_..." = video). A
+     * Cluster before any Tracks, or a structure that cannot be read, counts as
+     * no video track: recorders always write Tracks before the first Cluster.
+     *
+     * @param string $head the first {@see SNIFF_BYTES} bytes of the file
+     * @return bool true when a video track was found
+     */
+    protected static function matroska_has_video_track(string $head): bool {
+        $length = strlen($head);
+        $pos = 0;
+
+        // Top level: the EBML header, then the Segment.
+        $segment = null;
+        while (($element = self::ebml_element($head, $pos, $length)) !== null) {
+            [$id, $datastart, $dataend] = $element;
+            if ($id === 0x18538067) {
+                $segment = $element;
+                break;
+            }
+            if ($dataend === null) {
+                return false;
+            }
+            $pos = $dataend;
+        }
+        if ($segment === null) {
+            return false;
+        }
+        $pos = $segment[1];
+        $end = $segment[2] ?? $length;
+
+        // Segment children: SeekHead, Info, Void, ... up to Tracks.
+        while (($element = self::ebml_element($head, $pos, $end)) !== null) {
+            [$id, $datastart, $dataend] = $element;
+            if ($id === 0x1F43B675) {
+                // A Cluster: media data has begun without any Tracks.
+                return false;
+            }
+            if ($id === 0x1654AE6B) {
+                return self::matroska_tracks_have_video($head, $datastart, $dataend ?? $end);
+            }
+            if ($dataend === null) {
+                return false;
+            }
+            $pos = $dataend;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a Matroska Tracks element holds a video TrackEntry.
+     *
+     * @param string $data the bytes the element is in
+     * @param int $pos where the Tracks element's data starts
+     * @param int $end where it ends
+     * @return bool true when a video track was found
+     */
+    protected static function matroska_tracks_have_video(string $data, int $pos, int $end): bool {
+        while (($entry = self::ebml_element($data, $pos, $end)) !== null) {
+            [$id, $entrystart, $entryend] = $entry;
+            $entryend = $entryend ?? $end;
+            if ($id === 0xAE) {
+                $child = $entrystart;
+                while (($field = self::ebml_element($data, $child, $entryend)) !== null) {
+                    [$fieldid, $fieldstart, $fieldend] = $field;
+                    $fieldend = $fieldend ?? $entryend;
+                    $value = substr($data, $fieldstart, $fieldend - $fieldstart);
+                    if ($fieldid === 0x83 && $value !== '' && ltrim($value, "\x00") === "\x01") {
+                        // TrackType 1: video.
+                        return true;
+                    }
+                    if ($fieldid === 0x86 && strpos($value, 'V_') === 0) {
+                        // A video CodecID such as V_VP8, V_VP9, V_AV1 or V_MPEG4/ISO/AVC.
+                        return true;
+                    }
+                    $child = $fieldend;
+                }
+            }
+            $pos = $entryend;
+        }
+
+        return false;
+    }
+
+    /**
+     * Read the EBML element that starts at a position.
+     *
+     * @param string $data the bytes the element is in
+     * @param int $pos where the element starts
+     * @param int $end where the enclosing data ends; the element's data is clamped to it
+     * @return array|null [int $id, int $datastart, int|null $dataend] with a null end for an
+     *     unknown size, or null when no complete element header starts at $pos
+     */
+    protected static function ebml_element(string $data, int $pos, int $end): ?array {
+        $id = self::ebml_vint($data, $pos, $end, true);
+        if ($id === null || $id[1] > 4) {
+            return null;
+        }
+        $size = self::ebml_vint($data, $pos + $id[1], $end, false);
+        if ($size === null) {
+            return null;
+        }
+        $datastart = $pos + $id[1] + $size[1];
+        $dataend = $size[0] === null ? null : min($end, $datastart + $size[0]);
+
+        return [$id[0], $datastart, $dataend];
+    }
+
+    /**
+     * Read an EBML variable-length integer (an element ID or a data size).
+     *
+     * @param string $data the bytes to read from
+     * @param int $pos where the integer starts
+     * @param int $end the first position that may not be read
+     * @param bool $isid true for an element ID (the length marker is kept, as IDs are written
+     *     with it), false for a data size (the marker is removed; all value bits set means unknown)
+     * @return array|null [int|null $value, int $length] with a null value for an unknown size, or
+     *     null when there is no valid integer at $pos
+     */
+    protected static function ebml_vint(string $data, int $pos, int $end, bool $isid): ?array {
+        $end = min($end, strlen($data));
+        if ($pos < 0 || $pos >= $end) {
+            return null;
+        }
+        $first = ord($data[$pos]);
+        if ($first === 0) {
+            return null;
+        }
+        $length = 1;
+        $marker = 0x80;
+        while (!($first & $marker)) {
+            $length++;
+            $marker >>= 1;
+        }
+        if ($pos + $length > $end) {
+            return null;
+        }
+
+        $value = $isid ? $first : ($first & ($marker - 1));
+        $allones = ($first & ($marker - 1)) === $marker - 1;
+        for ($i = 1; $i < $length; $i++) {
+            $byte = ord($data[$pos + $i]);
+            $value = ($value << 8) | $byte;
+            $allones = $allones && $byte === 0xFF;
+        }
+        if (!$isid && $allones) {
+            return [null, $length];
+        }
+
+        return [$value, $length];
     }
 
     /**

@@ -16,6 +16,10 @@
 
 namespace local_textless_forum;
 
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/fixtures/webm_builder.php');
+
 /**
  * Tests for the event observers: server-side recordings-only posts, and clean-up.
  *
@@ -40,9 +44,7 @@ final class observer_test extends \advanced_testcase {
      * @return string the file content
      */
     protected function audio_webm(int $size = 2000): string {
-        $header = "\x1A\x45\xDF\xA3\x42\x82\x84webm" . str_repeat("\x00", 16) . "\x86\x86A_OPUS\x83\x81\x02";
-
-        return str_pad($header . "\x1F\x43\xB6\x75", $size, "\x55");
+        return webm_builder::audio($size);
     }
 
     /**

@@ -16,13 +16,18 @@
 
 namespace local_textless_forum;
 
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/fixtures/webm_builder.php');
+
 /**
  * Tests for the upload endpoint's checks (upload.php hands every upload to recording::store()).
  *
  * The MP4 video fixture is Moodle core's own test media
  * (lib/editor/tiny/tests/behat/fixtures/moodle-logo.mp4); the WebM video
- * fixture is a short VP8 WebM file. Audio-only recordings are built in the
- * test, since no media tool is available to make real ones.
+ * fixture is a short VP8 WebM file (ffmpeg layout). Audio-only recordings and
+ * Chromium-layout WebM recordings are built in the test
+ * ({@see webm_builder}), since no media tool is available to make real ones.
  *
  * @package    local_textless_forum
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -44,7 +49,7 @@ final class recording_test extends \advanced_testcase {
     }
 
     /**
-     * An audio-only WebM recording: EBML header, an Opus track, then a Cluster.
+     * An audio-only WebM recording: EBML header, Segment, SeekHead, Info, an Opus track, then a Cluster.
      *
      * The cluster payload contains "V_VP8" on purpose: media data must not be
      * mistaken for a video track header.
@@ -53,10 +58,16 @@ final class recording_test extends \advanced_testcase {
      * @return string the file path
      */
     protected function audio_webm(int $size = 2000): string {
-        $header = "\x1A\x45\xDF\xA3\x42\x82\x84webm" . str_repeat("\x00", 16) . "\x86\x86A_OPUS\x83\x81\x02";
-        $cluster = "\x1F\x43\xB6\x75" . 'V_VP8';
+        return $this->make_file(webm_builder::audio($size));
+    }
 
-        return $this->make_file(str_pad($header . $cluster, $size, "\x55"));
+    /**
+     * A VP8 + Opus WebM video recording laid out as current Chromium writes it.
+     *
+     * @return string the file path
+     */
+    protected function chromium_video_webm(): string {
+        return $this->make_file(webm_builder::chromium_video());
     }
 
     /**
@@ -162,6 +173,92 @@ final class recording_test extends \advanced_testcase {
         $this->assertFalse(recording::has_video_track($this->audio_webm(), recording::CONTAINER_MATROSKA));
         $this->assertFalse(recording::has_video_track($this->audio_mp4(), recording::CONTAINER_MP4));
         $this->assertFalse(recording::has_video_track($this->audio_ogg(), recording::CONTAINER_OGG));
+    }
+
+    /**
+     * A Chromium WebM video is recognised although its SeekHead holds the Cluster ID before Tracks.
+     *
+     * Regression test: the check used to stop at the first Cluster ID bytes,
+     * so it found no video track and every Chromium video upload was refused.
+     *
+     * @return void
+     */
+    public function test_has_video_track_chromium_seekhead(): void {
+        $this->resetAfterTest();
+
+        $content = webm_builder::chromium_video();
+        $this->assertLessThan(
+            strpos($content, 'V_VP8'),
+            strpos($content, "\x1F\x43\xB6\x75"),
+            'The fixture must hold the Cluster ID bytes before the video codec ID, as Chromium does'
+        );
+
+        $this->assertTrue(recording::has_video_track($this->chromium_video_webm(), recording::CONTAINER_MATROSKA));
+        $this->assertFalse(recording::has_video_track($this->audio_webm(), recording::CONTAINER_MATROSKA));
+    }
+
+    /**
+     * Malformed or truncated Matroska data never counts as a video track.
+     *
+     * @return void
+     */
+    public function test_has_video_track_malformed_matroska(): void {
+        $this->resetAfterTest();
+
+        $video = webm_builder::chromium_video();
+        // Cut inside the SeekHead, before Tracks.
+        $this->assertFalse(recording::has_video_track(
+            $this->make_file(substr($video, 0, strpos($video, "\x11\x4D\x9B\x74") + 10)),
+            recording::CONTAINER_MATROSKA
+        ));
+        // A Cluster before any Tracks: media data, never track headers.
+        $this->assertFalse(recording::has_video_track(
+            $this->make_file("\x1A\x45\xDF\xA3\x80\x18\x53\x80\x67\xFF\x1F\x43\xB6\x75\xFF\x86\x85V_VP8"),
+            recording::CONTAINER_MATROSKA
+        ));
+        // The bare magic bytes followed by a video codec ID, with no structure.
+        $this->assertFalse(recording::has_video_track(
+            $this->make_file("\x1A\x45\xDF\xA3\x00V_VP8"),
+            recording::CONTAINER_MATROSKA
+        ));
+    }
+
+    /**
+     * A Chromium WebM video is stored in a video forum and refused when declared as audio.
+     *
+     * @return void
+     */
+    public function test_store_chromium_video(): void {
+        $this->resetAfterTest();
+        [$context, $student] = $this->make_forum(true, manager::MODE_BOTH);
+        $this->setUser($student);
+
+        $file = recording::store($context, 7, 'video', $this->chromium_video_webm());
+        $this->assertMatchesRegularExpression('~^video-\d+-\w{6}\.webm$~', $file->get_filename());
+        $file->delete();
+
+        $this->assert_refused('recordingnotallowed', fn() => recording::store($context, 7, 'audio', $this->chromium_video_webm()));
+    }
+
+    /**
+     * A Chromium WebM video saved in a post is accepted as video and not as audio.
+     *
+     * @return void
+     */
+    public function test_is_acceptable_stored_file_chromium_video(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $file = get_file_storage()->create_file_from_string([
+            'contextid' => \context_user::instance($user->id)->id,
+            'component' => 'user',
+            'filearea' => 'draft',
+            'itemid' => 1,
+            'filepath' => '/',
+            'filename' => 'video-1.webm',
+        ], webm_builder::chromium_video());
+
+        $this->assertTrue(recording::is_acceptable_stored_file($file, manager::MODE_VIDEO, 0));
+        $this->assertFalse(recording::is_acceptable_stored_file($file, manager::MODE_AUDIO, 0));
     }
 
     /**
