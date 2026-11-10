@@ -2,6 +2,34 @@
 
 All notable changes to Textless forum (`local_textless_forum`) are documented in this file.
 
+## [1.1.4] - 2026-11-10
+
+### Added
+
+- `pix/icon.svg`, shown on Site administration > Plugins > Plugins overview.
+- `.camp/screenshots/01-textless-post-form.png`, listed in `.camp/listing.yml`.
+- `tests/fixtures/webm_builder.php`, which builds Chromium-layout WebM
+  recordings, and tests for their upload, post-save acceptance and malformed
+  data (`tests/recording_test.php`, `tests/observer_test.php`).
+
+### Changed
+
+- `amd/src/textless.js` reads `wwwroot` and `sesskey` from `core/config`
+  instead of the legacy `M.cfg` global.
+
+### Fixed
+
+- Chromium video recordings were refused by `upload.php` and stripped by the
+  post-save enforcement. Current Chromium writes a SeekHead that lists the
+  Cluster position, so the Cluster ID bytes occur before the Tracks element;
+  the Matroska check cut the header at the first occurrence of those bytes and
+  found no video CodecID. `recording::has_video_track_in()` now walks the EBML
+  structure (`matroska_has_video_track()`, `matroska_tracks_have_video()`,
+  `ebml_element()`, `ebml_vint()`): EBML header, Segment, its children up to
+  Tracks, then each TrackEntry's TrackType (1 = video) and CodecID (`V_...`).
+  A Cluster before Tracks, or data that cannot be parsed, still counts as no
+  video track.
+
 ## [1.1.3] - 2026-10-04
 
 ### Added
